@@ -109,6 +109,11 @@ struct ContentView: View {
                     }
                 }
             }
+            .background(KeyboardHandler(currentPage: $currentPage, pageCount: { () -> Int in
+                if filteredApps.isEmpty { return 0 }
+                let itemsPerPage = calculateItemsPerPage(geometry: geometry, totalApps: filteredApps.count)
+                return (filteredApps.count + itemsPerPage - 1) / itemsPerPage
+            }))
         }
         .onAppear {
             // Этот блок настраивает окно, чтобы оно было полноэкранным и поверх всего
@@ -214,6 +219,57 @@ struct ContentView: View {
     }
 }
 
+/// Обработчик клавиатурных событий для навигации
+struct KeyboardHandler: NSViewRepresentable {
+    @Binding var currentPage: Int
+    let pageCount: () -> Int
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = KeyboardEventView()
+        view.onKeyDown = { event in
+            let totalPages = pageCount()
+            guard totalPages > 1 else { return }
+            
+            switch event.keyCode {
+            case 123: // Левая стрелка
+                if currentPage > 0 {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        currentPage -= 1
+                    }
+                }
+            case 124: // Правая стрелка
+                if currentPage < totalPages - 1 {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        currentPage += 1
+                    }
+                }
+            default:
+                break
+            }
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+/// Кастомная NSView для обработки клавиатурных событий
+class KeyboardEventView: NSView {
+    var onKeyDown: ((NSEvent) -> Void)?
+    
+    override var acceptsFirstResponder: Bool {
+        return true
+    }
+    
+    override func keyDown(with event: NSEvent) {
+        onKeyDown?(event)
+    }
+    
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.makeFirstResponder(self)
+    }
+}
 
 /// Обертка для нативного эффекта размытия фона
 struct VisualEffectBlur: NSViewRepresentable {

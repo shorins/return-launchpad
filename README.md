@@ -70,7 +70,7 @@ Apple removed the traditional Launchpad from macOS Sequoia, leaving users withou
 ### Keyboard Shortcuts
 - **Search**: Just start typing when the launcher is open
 - **Escape**: Close the launcher
-- **Arrow Keys**: Navigate between pages (when available)
+- **Left/Right Arrow Keys**: Navigate between pages (when multiple pages are available)
 
 ## 🏗️ Architecture
 
@@ -120,8 +120,8 @@ Please use the [Issues](../../issues) page to:
 
 ## 📋 Roadmap
 
+- [x] **v1.2**: Keyboard navigation (Left/Right arrow keys for page switching)
 - [ ] **v1.1**: Custom app categories and folders
-- [ ] **v1.2**: Keyboard-only navigation
 - [ ] **v1.3**: Custom themes and appearance options
 - [ ] **v1.4**: App usage statistics and sorting
 - [ ] **v1.5**: Integration with Spotlight search
