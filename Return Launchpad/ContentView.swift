@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var searchText: String = ""
     @State private var hoverId: UUID?
     @State private var currentPage: Int = 0
+    @FocusState private var isSearchFocused: Bool
 
     // Фильтрует приложения на основе текста в поиске
     private var filteredApps: [AppInfo] {
@@ -32,8 +33,13 @@ struct ContentView: View {
                 VisualEffectBlur()
                     .edgesIgnoringSafeArea(.all)
                     .onTapGesture {
-                        // Клик на фон теперь полностью закрывает приложение
-                        NSApplication.shared.terminate(nil)
+                        // Если поиск активен, просто убираем фокус
+                        if isSearchFocused {
+                            isSearchFocused = false
+                        } else {
+                            // Если поиск не активен, закрываем приложение
+                            NSApplication.shared.terminate(nil)
+                        }
                     }
 
                 VStack(spacing: 0) {
@@ -48,6 +54,7 @@ struct ContentView: View {
                         .padding(.top, 20)
                         .padding(.bottom, 15)
                         .frame(maxWidth: 450)
+                        .focused($isSearchFocused)
                         .onChange(of: searchText) { oldValue, newValue in
                             currentPage = 0 // Сбрасываем страницу при новом поиске
                         }
@@ -113,7 +120,10 @@ struct ContentView: View {
                 if filteredApps.isEmpty { return 0 }
                 let itemsPerPage = calculateItemsPerPage(geometry: geometry, totalApps: filteredApps.count)
                 return (filteredApps.count + itemsPerPage - 1) / itemsPerPage
-            }))
+            }, isSearchFocused: Binding(
+                get: { isSearchFocused },
+                set: { _ in } // Only read access needed
+            )))
         }
         .onAppear {
             // Этот блок настраивает окно, чтобы оно было полноэкранным и поверх всего
@@ -223,10 +233,14 @@ struct ContentView: View {
 struct KeyboardHandler: NSViewRepresentable {
     @Binding var currentPage: Int
     let pageCount: () -> Int
+    @Binding var isSearchFocused: Bool
     
     func makeNSView(context: Context) -> NSView {
         let view = KeyboardEventView()
         view.onKeyDown = { event in
+            // Отключаем навигацию клавишами, если поиск активен
+            guard !isSearchFocused else { return }
+            
             let totalPages = pageCount()
             guard totalPages > 1 else { return }
             

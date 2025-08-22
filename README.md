@@ -11,11 +11,13 @@ Apple removed the traditional Launchpad from macOS Sequoia, leaving users withou
 - **Full-Screen Grid View**: Clean, organized display of all your applications
 - **Smart Search**: Real-time filtering as you type
 - **Responsive Layout**: Automatically adapts to different screen sizes
-- **Pagination**: Navigate through multiple pages of applications
-- **Hover Effects**: Smooth animations and visual feedback
+- **Pagination**: Navigate through multiple pages of applications with arrow buttons
+- **Keyboard Navigation**: Use left/right arrow keys to switch between pages
+- **Hover Effects**: Smooth animations and visual feedback with scaling
 - **Centered Results**: Filtered search results are perfectly centered
 - **One-Click Launch**: Click any app to launch it instantly
 - **Auto-Close**: Launcher closes automatically after launching an app
+- **Click-to-Close**: Click anywhere on the background to close the launcher
 - **Floating Window**: Appears above all other windows
 - **Blur Background**: Native macOS visual effects for a polished look
 
@@ -69,7 +71,7 @@ Apple removed the traditional Launchpad from macOS Sequoia, leaving users withou
 
 ### Keyboard Shortcuts
 - **Search**: Just start typing when the launcher is open
-- **Escape**: Close the launcher
+- **Escape**: Close the launcher (not yet implemented)
 - **Left/Right Arrow Keys**: Navigate between pages (when multiple pages are available)
 
 ## 🏗️ Architecture
@@ -77,21 +79,32 @@ Apple removed the traditional Launchpad from macOS Sequoia, leaving users withou
 Return Launchpad is built with modern Swift and SwiftUI practices:
 
 - **SwiftUI Framework**: Native macOS UI with smooth animations
-- **ObservableObject Pattern**: Reactive state management
-- **Modular Design**: Clean separation of concerns
-- **App Scanning**: Automatic discovery of installed applications
-- **Icon Extraction**: Native app icon retrieval and display
+- **MVVM Architecture**: Clean separation with ObservableObject pattern
+- **Keyboard Event Handling**: Custom NSViewRepresentable for arrow key navigation
+- **Dynamic Layout**: Responsive grid that adapts to screen size and content
+- **App Scanning**: Automatic discovery from /Applications and user directories
+- **Icon Extraction**: Native app icon retrieval with fallback to generic icons
+- **Memory Efficient**: LazyVGrid for optimal performance with many apps
 
 ### Project Structure
 
 ```
 Return Launchpad/
-├── Return_LaunchpadApp.swift    # App entry point
-├── ContentView.swift            # Main UI and layout logic
-├── AppManager.swift             # State management
-├── AppInfo.swift               # Data models and app scanning
+├── Return_LaunchpadApp.swift    # App entry point with window configuration
+├── ContentView.swift            # Main UI, grid layout, search, pagination, keyboard handling
+├── AppManager.swift             # State management with ObservableObject
+├── AppInfo.swift               # Data models (AppInfo) and app scanning (AppScanner)
 └── Assets.xcassets/            # App icons and resources
 ```
+
+### Key Components
+
+- **ContentView**: Main interface with search field, responsive grid, pagination controls, and keyboard navigation
+- **AppManager**: Simple state management holding the apps array
+- **AppInfo**: Data model with id, name, icon (NSImage), and URL
+- **AppScanner**: Service for discovering .app bundles and extracting metadata
+- **KeyboardHandler**: Custom NSViewRepresentable for handling left/right arrow key navigation
+- **VisualEffectBlur**: NSViewRepresentable wrapper for native macOS blur effects
 
 ## 🤝 Contributing
 
@@ -120,11 +133,20 @@ Please use the [Issues](../../issues) page to:
 
 ## 📋 Roadmap
 
-- [x] **v1.2**: Keyboard navigation (Left/Right arrow keys for page switching)
-- [ ] **v1.1**: Custom app categories and folders
+### Completed ✅
+- **Keyboard Navigation**: Left/Right arrow keys for page switching
+- **Basic Pagination**: Arrow button navigation between pages
+- **Responsive Grid**: Dynamic layout adaptation to screen size
+- **Search Functionality**: Real-time filtering with centered results
+
+### Planned Features 🔄
+- [ ] **v1.1**: Escape key support to close launcher
+- [ ] **v1.2**: Custom app categories and folders
 - [ ] **v1.3**: Custom themes and appearance options
-- [ ] **v1.4**: App usage statistics and sorting
+- [ ] **v1.4**: App usage statistics and smart sorting
 - [ ] **v1.5**: Integration with Spotlight search
+- [ ] **v1.6**: Advanced keyboard shortcuts (CMD+Space activation)
+- [ ] **v1.7**: Multi-monitor support optimization
 
 ## 🔒 Privacy
 
