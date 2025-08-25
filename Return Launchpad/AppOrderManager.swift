@@ -340,8 +340,22 @@ class AppOrderManager: ObservableObject {
     
     /// Перемещает приложение в новую позицию (для drag & drop)
     func moveApp(from sourceIndex: Int, to destinationIndex: Int, in apps: [AppInfo]) -> [AppInfo] {
+        // Проверяем границы массива для безопасности
+        guard sourceIndex >= 0 && sourceIndex < apps.count &&
+              destinationIndex >= 0 && destinationIndex < apps.count else {
+            logger.log(.error, "❌ Invalid indices: source=\(sourceIndex), dest=\(destinationIndex), apps.count=\(apps.count)")
+            return apps
+        }
+        
+        // ИСПРАВЛЕНИЕ: Если индексы одинаковые, не делаем ничего
+        if sourceIndex == destinationIndex {
+            logger.log(.info, "⚠️ Same position move - no action needed (index \(sourceIndex))")
+            return apps
+        }
+        
         logger.logDragDrop("START \(instanceId.uuidString.prefix(8))", fromIndex: sourceIndex, toIndex: destinationIndex, appName: apps[sourceIndex].name)
         logger.log(.info, "🏢 Instance \(instanceId.uuidString.prefix(8)) - isCustomOrderEnabled BEFORE: \(isCustomOrderEnabled)")
+        logger.log(.info, "🎯 Global indices: source=\(sourceIndex), dest=\(destinationIndex), total apps=\(apps.count)")
         
         // Автоматически включаем пользовательский порядок при первом перетаскивании
         if !isCustomOrderEnabled {
@@ -350,9 +364,23 @@ class AppOrderManager: ObservableObject {
             logger.log(.info, "⚡️ Instance \(instanceId.uuidString.prefix(8)) - isCustomOrderEnabled AFTER enableCustomOrder: \(isCustomOrderEnabled)")
         }
         
+        // ИСПРАВЛЕНИЕ: Правильная логика перемещения с учетом изменения индексов
         var reorderedApps = apps
         let movedApp = reorderedApps.remove(at: sourceIndex)
-        reorderedApps.insert(movedApp, at: destinationIndex)
+        
+        // После удаления элемента индексы сдвигаются, корректируем целевой индекс
+        let finalDestinationIndex: Int
+        if destinationIndex > sourceIndex {
+            // Если перемещаем вправо, целевой индекс уменьшается на 1 после удаления
+            finalDestinationIndex = destinationIndex - 1
+        } else {
+            // Если перемещаем влево, целевой индекс остается тем же
+            finalDestinationIndex = destinationIndex
+        }
+        
+        // Проверяем границы после корректировки
+        let safeDestinationIndex = max(0, min(finalDestinationIndex, reorderedApps.count))
+        reorderedApps.insert(movedApp, at: safeDestinationIndex)
         
         // Обновляем пользовательский порядок
         let newOrder = reorderedApps.map { $0.bundleIdentifier }
@@ -361,6 +389,7 @@ class AppOrderManager: ObservableObject {
         
         logger.logDragDrop("COMPLETE", appName: movedApp.name)
         logger.log(.info, "💾 Обновлен порядок: \(oldOrderCount) → \(newOrder.count) элементов")
+        logger.log(.info, "📍 Final position: \(movedApp.name) moved from \(sourceIndex) to \(safeDestinationIndex) (adjusted from \(destinationIndex))")
         
         // Принудительно сохраняем данные после drag & drop
         forceSave()

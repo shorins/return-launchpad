@@ -131,7 +131,7 @@ struct ContentView: View {
                         // Сетка с иконками - Professional drag & drop with insertion points
                         HStack {
                             Spacer()
-                            dragDropGridView(pageApps: pageApps, geometry: geometry)
+                            dragDropGridView(pageApps: pageApps, geometry: geometry, itemsPerPage: itemsPerPage)
                             Spacer()
                         }
                         .padding(.horizontal, 40)
@@ -208,7 +208,7 @@ struct ContentView: View {
     }
 
     /// Pure iPhone-style drag & drop grid - each icon position is a drop target
-    private func dragDropGridView(pageApps: [AppInfo], geometry: GeometryProxy) -> some View {
+    private func dragDropGridView(pageApps: [AppInfo], geometry: GeometryProxy, itemsPerPage: Int) -> some View {
         let columns = createGridColumns(geometry: geometry, totalItems: pageApps.count)
         let itemsPerRow = columns.count
         
@@ -247,7 +247,7 @@ struct ContentView: View {
                                     stablePageApps: $stablePageApps,
                                     dropAnimationOffset: $dropAnimationOffset,
                                     currentPage: currentPage,
-                                    itemsPerPage: calculateItemsPerPage(geometry: geometry, totalApps: pageApps.count)
+                                    itemsPerPage: itemsPerPage  // ✅ ИСПРАВЛЕНО: используем переданный параметр
                                 ))
                                 .opacity(draggedItem?.id == app.id ? 0.1 : 1.0)
                                 .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draggedItem?.id)
@@ -485,13 +485,36 @@ struct PureIPhoneDropDelegate: SwiftUI.DropDelegate {
             return false
         }
         
-        print("🔄 iPhone Moving \(draggedItem.name) from \(originalIndex) to position \(targetIndex)")
+        print("🔄 iPhone Moving \(draggedItem.name) from local index \(originalIndex) to local index \(targetIndex)")
         
-        // Calculate global indices for persistence
-        let globalOriginalIndex = currentPage * itemsPerPage + originalIndex
-        let globalTargetIndex = currentPage * itemsPerPage + targetIndex
+        // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Правильный расчет глобальных индексов
+        // Получаем стартовый индекс текущей страницы в общем массиве
+        let pageStartIndex = currentPage * itemsPerPage
+        let globalOriginalIndex = pageStartIndex + originalIndex
+        let globalTargetIndex = pageStartIndex + targetIndex
         
-        print("🌍 Global move: \(globalOriginalIndex) → \(globalTargetIndex)")
+        print("🌍 CRITICAL INDEX DEBUG:")
+        print("   • Current page: \(currentPage)")
+        print("   • Items per page (CONSISTENT): \(itemsPerPage)")
+        print("   • Page start index: \(pageStartIndex)")
+        print("   • Local original: \(originalIndex) → Global: \(globalOriginalIndex)")
+        print("   • Local target: \(targetIndex) → Global: \(globalTargetIndex)")
+        print("   • Total apps in manager: \(appManager.apps.count)")
+        print("   • Apps on this page: \(displayApps.count)")
+        print("   • Expected range: \(pageStartIndex)..<\(pageStartIndex + itemsPerPage)")
+        
+        // Дополнительная проверка: убеждаемся, что перемещение имеет смысл
+        if originalIndex == targetIndex {
+            print("⚠️ Same position drop - no action needed")
+            // Сбрасываем состояние drag без изменений
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.draggedItem = nil
+                self.draggedItemOriginalIndex = nil
+                isInDragMode = false
+                stablePageApps = []
+            }
+            return true
+        }
         
         // Add drop animation from mouse position
         let mouseLocation = info.location
@@ -502,7 +525,7 @@ struct PureIPhoneDropDelegate: SwiftUI.DropDelegate {
             print("✅ EXECUTING iPhone appManager.moveApp(\(globalOriginalIndex) → \(globalTargetIndex))")
             appManager.moveApp(from: globalOriginalIndex, to: globalTargetIndex)
         } else {
-            print("❌ Invalid global indices")
+            print("❌ Invalid global indices: source=\(globalOriginalIndex), target=\(globalTargetIndex), total=\(appManager.apps.count)")
         }
         
         // Animate to final position then reset
