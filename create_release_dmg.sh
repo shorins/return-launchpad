@@ -95,16 +95,29 @@ fi
 mkdir -p "$RELEASE_DIR"
 echo -e "${GREEN}✅ Created Release directory: $RELEASE_DIR${NC}\n"
 
-# Step 4: Copy app to Release directory
-print_step "4" "Copying app to Release directory"
+# Step 4: Copy app and README to Release directory
+print_step "4" "Copying app and README to Release directory"
 echo "Copying $APP_NAME to Release directory..."
 cp -R "$APP_PATH" "$RELEASE_DIR/"
 
 if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ App copied successfully${NC}\n"
+    echo -e "${GREEN}✅ App copied successfully${NC}"
 else
     echo -e "${RED}❌ Failed to copy app${NC}"
     exit 1
+fi
+
+# Copy README.txt
+echo "Copying README.txt to Release directory..."
+if [ -f "README.txt" ]; then
+    cp "README.txt" "$RELEASE_DIR/README.txt"
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ README.txt copied successfully${NC}\n"
+    else
+        echo -e "${YELLOW}⚠️ Warning: Failed to copy README.txt${NC}\n"
+    fi
+else
+    echo -e "${YELLOW}⚠️ Warning: README.md not found, skipping README.txt copy${NC}\n"
 fi
 
 # Step 5: Create DMG
@@ -121,16 +134,21 @@ fi
 # Create the DMG
 create-dmg \
   --volname "Return Launchpad Installer" \
-  --window-size 500 300 \
+  --window-size 600 400 \
   --icon-size 100 \
-  --icon "$APP_NAME" 120 150 \
-  --app-drop-link 380 150 \
+  --icon "$APP_NAME" 120 200 \
+  --icon "README.txt" 400 200 \
+  --app-drop-link 300 200 \
   "$DMG_PATH" \
   "$RELEASE_DIR"
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ DMG created successfully${NC}"
     echo -e "${GREEN}📦 DMG location: $DMG_PATH${NC}\n"
+    
+    # Get file sizes for summary before cleanup
+    APP_SIZE=$(du -sh "$RELEASE_DIR/$APP_NAME" | cut -f1)
+    DMG_SIZE=$(du -sh "$DMG_PATH" | cut -f1)
     
     # Clean up the Release directory after successful DMG creation
     echo "🧹 Cleaning up Release directory..."
@@ -144,10 +162,6 @@ else
     echo -e "${RED}❌ DMG creation failed${NC}"
     exit 1
 fi
-
-# Get file sizes for summary
-APP_SIZE=$(du -sh "$RELEASE_DIR/$APP_NAME" | cut -f1)
-DMG_SIZE=$(du -sh "$DMG_PATH" | cut -f1)
 
 # Final summary
 echo -e "${BLUE}🎉 Build and DMG Creation Complete!${NC}"
