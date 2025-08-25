@@ -14,9 +14,13 @@ struct ContentView: View {
     @State private var currentPage: Int = 0
     @FocusState private var isSearchFocused: Bool
     
-    // Drag & Drop состояния
+    // Drag & Drop состояния - Pure iPhone style
     @State private var draggedItem: AppInfo?
     @State private var isInDragMode: Bool = false
+    @State private var draggedItemOriginalIndex: Int?
+    @State private var targetDropIndex: Int?  // Where we want to drop
+    @State private var stablePageApps: [AppInfo] = []  // Stable layout during drag
+    @State private var dropAnimationOffset: CGSize = .zero
 
     // Фильтрует приложения на основе текста в поиске
     private var filteredApps: [AppInfo] {
@@ -48,68 +52,71 @@ struct ContentView: View {
 
                 VStack(spacing: 0) {
                     // Поле для поиска
-                    VStack(spacing: 8) {
-                        TextField("Найти приложение...", text: $searchText)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .font(.title2)
-                            .padding()
-                            .background(Color.black.opacity(0.25))
-                            .cornerRadius(12)
-                            .padding(.horizontal, 40)
-                            .frame(maxWidth: 450)
-                            .focused($isSearchFocused)
-                            .onChange(of: searchText) { oldValue, newValue in
-                                currentPage = 0 // Сбрасываем страницу при новом поиске
-                            }
-                        
-                        // Индикатор режима упорядочивания
-                        if appManager.isCustomOrderEnabled || appManager.hasNewApps {
-                            HStack(spacing: 12) {
-                                if appManager.isCustomOrderEnabled {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "arrow.up.arrow.down")
-                                        Text("Пользовательский порядок")
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(.blue.opacity(0.9))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.blue.opacity(0.2))
-                                    .cornerRadius(8)
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 8) {
+                            TextField("Найти приложение...", text: $searchText)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .font(.title2)
+                                .padding()
+                                .background(Color.black.opacity(0.25))
+                                .cornerRadius(12)
+                                .frame(maxWidth: 450)
+                                .focused($isSearchFocused)
+                                .onChange(of: searchText) { oldValue, newValue in
+                                    currentPage = 0 // Сбрасываем страницу при новом поиске
                                 }
-                                
-                                if appManager.hasNewApps {
-                                    let stats = appManager.getOrderingStats()
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "plus.circle")
-                                        Text("Новых: \(stats.newApps)")
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(.green.opacity(0.9))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.green.opacity(0.2))
-                                    .cornerRadius(8)
-                                }
-                                
-                                // Кнопка сброса к алфавитному порядку
-                                if appManager.isCustomOrderEnabled {
-                                    Button("Алфавит") {
-                                        withAnimation(.easeInOut(duration: 0.3)) {
-                                            appManager.resetToAlphabeticalOrder()
+                            
+                            // Индикатор режима упорядочивания
+                            if appManager.isCustomOrderEnabled || appManager.hasNewApps {
+                                HStack(spacing: 12) {
+                                    if appManager.isCustomOrderEnabled {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "arrow.up.arrow.down")
+                                            Text("Пользовательский порядок")
                                         }
+                                        .font(.caption)
+                                        .foregroundColor(.blue.opacity(0.9))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.blue.opacity(0.2))
+                                        .cornerRadius(8)
                                     }
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.8))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.black.opacity(0.3))
-                                    .cornerRadius(8)
-                                    .buttonStyle(.plain)
+                                    
+                                    if appManager.hasNewApps {
+                                        let stats = appManager.getOrderingStats()
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "plus.circle")
+                                            Text("Новых: \(stats.newApps)")
+                                        }
+                                        .font(.caption)
+                                        .foregroundColor(.green.opacity(0.9))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.green.opacity(0.2))
+                                        .cornerRadius(8)
+                                    }
+                                    
+                                    // Кнопка сброса к алфавитному порядку
+                                    if appManager.isCustomOrderEnabled {
+                                        Button("Алфавит") {
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                appManager.resetToAlphabeticalOrder()
+                                            }
+                                        }
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.8))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.black.opacity(0.3))
+                                        .cornerRadius(8)
+                                        .buttonStyle(.plain)
+                                    }
                                 }
+                                .transition(.opacity.combined(with: .move(edge: .top)))
                             }
-                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
+                        Spacer()
                     }
                     .padding(.top, 20)
                     .padding(.bottom, 15)
@@ -121,25 +128,10 @@ struct ContentView: View {
                         
                         let pageApps = appsForPage(currentPage, itemsPerPage: itemsPerPage)
                         
-                        // Сетка с иконками
+                        // Сетка с иконками - Professional drag & drop with insertion points
                         HStack {
                             Spacer()
-                            LazyVGrid(columns: createGridColumns(geometry: geometry, totalItems: pageApps.count), spacing: 20) {
-                                ForEach(pageApps, id: \.id) { app in
-                                    appIconView(app: app)
-                                        .onDrag {
-                                            draggedItem = app
-                                            isInDragMode = true
-                                            return NSItemProvider(object: app.bundleIdentifier as NSString)
-                                        }
-                                        .onDrop(of: [.text], delegate: DropDelegate(
-                                            app: app,
-                                            apps: $appManager.apps,
-                                            appManager: appManager,
-                                            draggedItem: $draggedItem
-                                        ))
-                                }
-                            }
+                            dragDropGridView(pageApps: pageApps, geometry: geometry)
                             Spacer()
                         }
                         .padding(.horizontal, 40)
@@ -162,22 +154,26 @@ struct ContentView: View {
                         // Блок навигации по страницам
                         if pageCount > 1 {
                             HStack {
-                                Button(action: { if currentPage > 0 { currentPage -= 1 } }) {
-                                    Image(systemName: "chevron.left")
-                                }.disabled(currentPage == 0)
-                                
-                                Text("\(currentPage + 1) из \(pageCount)")
-                                    .font(.body).foregroundColor(.white.opacity(0.8))
-                                
-                                Button(action: { if currentPage < pageCount - 1 { currentPage += 1 } }) {
-                                    Image(systemName: "chevron.right")
-                                }.disabled(currentPage >= pageCount - 1)
+                                Spacer()
+                                HStack {
+                                    Button(action: { if currentPage > 0 { currentPage -= 1 } }) {
+                                        Image(systemName: "chevron.left")
+                                    }.disabled(currentPage == 0)
+                                    
+                                    Text("\(currentPage + 1) из \(pageCount)")
+                                        .font(.body).foregroundColor(.white.opacity(0.8))
+                                    
+                                    Button(action: { if currentPage < pageCount - 1 { currentPage += 1 } }) {
+                                        Image(systemName: "chevron.right")
+                                    }.disabled(currentPage >= pageCount - 1)
+                                }
+                                .buttonStyle(.plain)
+                                .font(.title2)
+                                .padding()
+                                .background(Color.black.opacity(0.2))
+                                .cornerRadius(15)
+                                Spacer()
                             }
-                            .buttonStyle(.plain)
-                            .font(.title2)
-                            .padding()
-                            .background(Color.black.opacity(0.2))
-                            .cornerRadius(15)
                             .padding(.bottom, 20)
                         }
                         
@@ -211,7 +207,68 @@ struct ContentView: View {
         }
     }
 
-    /// Вспомогательная View для отображения одной иконки
+    /// Pure iPhone-style drag & drop grid - each icon position is a drop target
+    private func dragDropGridView(pageApps: [AppInfo], geometry: GeometryProxy) -> some View {
+        let columns = createGridColumns(geometry: geometry, totalItems: pageApps.count)
+        let itemsPerRow = columns.count
+        
+        // Use stable layout during drag - no complex flowing, just stable positions
+        let displayApps = isInDragMode ? stablePageApps : pageApps
+        
+        return VStack(spacing: 20) {
+            ForEach(0..<Int(ceil(Double(displayApps.count) / Double(itemsPerRow))), id: \.self) { rowIndex in
+                HStack(spacing: 20) {
+                    ForEach(0..<itemsPerRow, id: \.self) { colIndex in
+                        let appIndex = rowIndex * itemsPerRow + colIndex
+                        
+                        // Each position is a direct drop target - true iPhone style
+                        if appIndex < displayApps.count {
+                            let app = displayApps[appIndex]
+                            
+                            appIconView(app: app)
+                                .offset(dropAnimationOffset)
+                                .onDrag {
+                                    print("🎯 DRAG STARTED: \(app.name) at index \(appIndex)")
+                                    draggedItem = app
+                                    draggedItemOriginalIndex = appIndex
+                                    stablePageApps = pageApps  // Capture stable layout
+                                    isInDragMode = true
+                                    dropAnimationOffset = .zero
+                                    return NSItemProvider(object: app.bundleIdentifier as NSString)
+                                }
+                                .onDrop(of: [.text], delegate: PureIPhoneDropDelegate(
+                                    targetIndex: appIndex,
+                                    app: app,
+                                    displayApps: displayApps,
+                                    appManager: appManager,
+                                    draggedItem: $draggedItem,
+                                    draggedItemOriginalIndex: $draggedItemOriginalIndex,
+                                    isInDragMode: $isInDragMode,
+                                    stablePageApps: $stablePageApps,
+                                    dropAnimationOffset: $dropAnimationOffset,
+                                    currentPage: currentPage,
+                                    itemsPerPage: calculateItemsPerPage(geometry: geometry, totalApps: pageApps.count)
+                                ))
+                                .opacity(draggedItem?.id == app.id ? 0.1 : 1.0)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draggedItem?.id)
+                                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: dropAnimationOffset)
+                        } else {
+                            // Empty space for incomplete rows  
+                            Spacer()
+                                .frame(width: 140, height: 120)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+
+    
+
+    
+
+    
     private func appIconView(app: AppInfo) -> some View {
         VStack(spacing: 8) {
             Image(nsImage: app.icon)
@@ -391,44 +448,75 @@ struct VisualEffectBlur: NSViewRepresentable {
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
-/// DropDelegate для обработки drag & drop
-struct DropDelegate: SwiftUI.DropDelegate {
+/// Pure iPhone-style Drop Delegate - drop directly on any icon position
+struct PureIPhoneDropDelegate: SwiftUI.DropDelegate {
+    let targetIndex: Int
     let app: AppInfo
-    @Binding var apps: [AppInfo]
+    let displayApps: [AppInfo]
     let appManager: AppManager
     @Binding var draggedItem: AppInfo?
-    
-    func performDrop(info: DropInfo) -> Bool {
-        guard let draggedItem = draggedItem else { return false }
-        
-        if draggedItem.id != app.id {
-            let fromIndex = apps.firstIndex(where: { $0.id == draggedItem.id })
-            let toIndex = apps.firstIndex(where: { $0.id == app.id })
-            
-            if let fromIndex = fromIndex, let toIndex = toIndex {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    appManager.moveApp(from: fromIndex, to: toIndex)
-                }
-            }
-        }
-        
-        self.draggedItem = nil
-        return true
-    }
+    @Binding var draggedItemOriginalIndex: Int?
+    @Binding var isInDragMode: Bool
+    @Binding var stablePageApps: [AppInfo]
+    @Binding var dropAnimationOffset: CGSize
+    let currentPage: Int
+    let itemsPerPage: Int
     
     func dropEntered(info: DropInfo) {
-        // Предварительное перемещение для визуальной обратной связи
-        guard let draggedItem = draggedItem else { return }
+        // Only update target if it's different from current position
+        guard let draggedItem = draggedItem,
+              draggedItem.id != app.id else { return }
         
-        if draggedItem.id != app.id {
-            let fromIndex = apps.firstIndex(where: { $0.id == draggedItem.id })
-            let toIndex = apps.firstIndex(where: { $0.id == app.id })
-            
-            if let fromIndex = fromIndex, let toIndex = toIndex {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    apps.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
-                }
-            }
+        print("🎯 iPhone DROP ENTERED: \(app.name) at position \(targetIndex)")
+        // No additional state needed - visual flow happens automatically
+    }
+    
+    func dropExited(info: DropInfo) {
+        print("🚪 iPhone DROP EXITED: \(app.name)")
+    }
+    
+    func performDrop(info: DropInfo) -> Bool {
+        print("📍 iPhone PURE DROP on \(app.name) at position \(targetIndex)")
+        
+        guard let draggedItem = draggedItem,
+              let originalIndex = draggedItemOriginalIndex,
+              draggedItem.id != app.id else {
+            print("❌ Invalid drop - same app or missing data")
+            return false
         }
+        
+        print("🔄 iPhone Moving \(draggedItem.name) from \(originalIndex) to position \(targetIndex)")
+        
+        // Calculate global indices for persistence
+        let globalOriginalIndex = currentPage * itemsPerPage + originalIndex
+        let globalTargetIndex = currentPage * itemsPerPage + targetIndex
+        
+        print("🌍 Global move: \(globalOriginalIndex) → \(globalTargetIndex)")
+        
+        // Add drop animation from mouse position
+        let mouseLocation = info.location
+        dropAnimationOffset = CGSize(width: mouseLocation.x - 70, height: mouseLocation.y - 60)
+        
+        // Perform the actual move with boundary checking
+        if globalOriginalIndex < appManager.apps.count && globalTargetIndex < appManager.apps.count {
+            print("✅ EXECUTING iPhone appManager.moveApp(\(globalOriginalIndex) → \(globalTargetIndex))")
+            appManager.moveApp(from: globalOriginalIndex, to: globalTargetIndex)
+        } else {
+            print("❌ Invalid global indices")
+        }
+        
+        // Animate to final position then reset
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            dropAnimationOffset = .zero
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.draggedItem = nil
+            self.draggedItemOriginalIndex = nil
+            isInDragMode = false
+            stablePageApps = []  // Clear stable layout
+        }
+        
+        return true
     }
 }

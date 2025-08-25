@@ -12,12 +12,23 @@ import SwiftUI
 class AppManager: ObservableObject {
     @Published var apps: [AppInfo] = []
     @Published var hasNewApps: Bool = false
+    @Published var isCustomOrderEnabled: Bool = false
     
     private var appScanner = AppScanner()
     private var orderManager = AppOrderManager()
     
     init() {
+        PersistenceLogger.shared.log(.info, "🔄 AppManager Instance Created (ID: \(ObjectIdentifier(self)))")
+        PersistenceLogger.shared.log(.info, "🔄 AppOrderManager Instance: \(ObjectIdentifier(orderManager))")
+        
+        // Sync the initial state
+        self.isCustomOrderEnabled = orderManager.isCustomOrderEnabled
+        
         loadApps()
+        
+        // Проверяем, что пользовательская конфигурация правильно загружена
+        let verification = orderManager.verifyInitialization()
+        print("[AppManager] Инициализация завершена: customOrder=\(verification.customOrderEnabled), savedItems=\(verification.savedItemsCount)")
         // @AppStorage в AppOrderManager автоматически обновляет UI
     }
     
@@ -40,18 +51,28 @@ class AppManager: ObservableObject {
     
     /// Обновляет порядок приложений без повторного сканирования
     private func refreshAppOrder() {
-        let sortedApps = orderManager.sortApps(apps)
+        let sortedApps = orderManager.applyCurrentOrder(apps)
         DispatchQueue.main.async {
             self.apps = sortedApps
+            print("[AppManager] Порядок обновлен, первые 3: \(self.apps.prefix(3).map { $0.name })")
         }
     }
     
     /// Перемещает приложение с одной позиции на другую
     func moveApp(from sourceIndex: Int, to destinationIndex: Int) {
+        PersistenceLogger.shared.logDragDrop("MANAGER_START", fromIndex: sourceIndex, toIndex: destinationIndex, appName: apps[sourceIndex].name)
+        PersistenceLogger.shared.log(.info, "🔍 BEFORE moveApp: isCustomOrderEnabled=\(orderManager.isCustomOrderEnabled)")
+        
         let reorderedApps = orderManager.moveApp(from: sourceIndex, to: destinationIndex, in: apps)
+        
+        PersistenceLogger.shared.log(.info, "🔍 AFTER moveApp: isCustomOrderEnabled=\(orderManager.isCustomOrderEnabled)")
+        PersistenceLogger.shared.logDragDrop("MANAGER_COMPLETE", appName: apps[sourceIndex].name)
+        
         DispatchQueue.main.async {
             self.apps = reorderedApps
+            self.isCustomOrderEnabled = self.orderManager.isCustomOrderEnabled // Sync the UI state
             self.hasNewApps = false // Сбрасываем флаг после пользовательского действия
+            PersistenceLogger.shared.log(.info, "🔍 UI Updated: apps count=\(self.apps.count)")
         }
     }
     
@@ -65,6 +86,7 @@ class AppManager: ObservableObject {
         orderManager.resetToAlphabetical()
         refreshAppOrder()
         DispatchQueue.main.async {
+            self.isCustomOrderEnabled = self.orderManager.isCustomOrderEnabled
             self.hasNewApps = false
         }
     }
@@ -72,15 +94,11 @@ class AppManager: ObservableObject {
     /// Включает пользовательский порядок
     func enableCustomOrder() {
         orderManager.enableCustomOrder()
+        self.isCustomOrderEnabled = orderManager.isCustomOrderEnabled
     }
     
     /// Возвращает статистику упорядочивания
     func getOrderingStats() -> (customOrder: Int, newApps: Int, total: Int) {
         return orderManager.getOrderingStats(for: apps)
-    }
-    
-    /// Проверяет, включен ли пользовательский порядок
-    var isCustomOrderEnabled: Bool {
-        return orderManager.isCustomOrderEnabled
     }
 }

@@ -11,8 +11,13 @@ import AppKit
 
 /// Менеджер для управления пользовательским порядком приложений
 class AppOrderManager: ObservableObject {
-    /// UserDefaults для группы приложений
-    private let appGroupDefaults = UserDefaults(suiteName: "group.shorins.return-launchpad") ?? UserDefaults.standard
+    /// Логгер для отладки persistence операций
+    private let logger = PersistenceLogger.shared
+    /// Многоуровневая стратегия UserDefaults для максимальной совместимости
+    private let persistenceStrategy: PersistenceStrategy
+    
+    /// Уникальный идентификатор экземпляра
+    private let instanceId = UUID()
     
     /// Имя текущего пользователя для создания уникальных ключей
     private let currentUser = NSUserName()
@@ -21,21 +26,133 @@ class AppOrderManager: ObservableObject {
     private var customOrderEnabledKey: String { "\(currentUser)_isCustomOrderEnabled" }
     private var userAppOrderKey: String { "\(currentUser)_userAppOrder" }
     
+    /// Структура для управления стратегией persistence
+    private struct PersistenceStrategy {
+        let primary: UserDefaults
+        let fallback: UserDefaults
+        let description: String
+        
+        init() {
+            // Попытка использовать app group (идеально для развития)
+            if let appGroupDefaults = UserDefaults(suiteName: "group.shorins.return-launchpad") {
+                self.primary = appGroupDefaults
+                self.fallback = UserDefaults.standard
+                self.description = "App Group + Standard fallback"
+            } else {
+                // Fallback на стандартные UserDefaults
+                self.primary = UserDefaults.standard
+                self.fallback = UserDefaults.standard
+                self.description = "Standard UserDefaults only"
+            }
+        }
+        
+        func set(_ value: Any?, forKey key: String) {
+            let logger = PersistenceLogger.shared
+            logger.logUserDefaultsOperation("SET", key: key, value: value, storage: "primary")
+            
+            primary.set(value, forKey: key)
+            primary.synchronize()
+            
+            // Дублируем в fallback для надежности
+            if primary !== fallback {
+                logger.logUserDefaultsOperation("SET_FALLBACK", key: key, value: value, storage: "fallback")
+                fallback.set(value, forKey: key)
+                fallback.synchronize()
+            }
+            
+            logger.log(.info, "✅ Data written to both storages for key: \(key)")
+        }
+        
+        func bool(forKey key: String) -> Bool {
+            let logger = PersistenceLogger.shared
+            
+            // Сначала пробуем primary
+            if primary.object(forKey: key) != nil {
+                let value = primary.bool(forKey: key)
+                logger.logUserDefaultsOperation("GET_PRIMARY", key: key, value: value, storage: "primary")
+                return value
+            }
+            
+            // Если в primary нет данных, пробуем fallback
+            let fallbackValue = fallback.bool(forKey: key)
+            logger.logUserDefaultsOperation("GET_FALLBACK", key: key, value: fallbackValue, storage: "fallback")
+            return fallbackValue
+        }
+        
+        func string(forKey key: String) -> String? {
+            let logger = PersistenceLogger.shared
+            
+            // Сначала пробуем primary
+            if let value = primary.string(forKey: key) {
+                logger.logUserDefaultsOperation("GET_PRIMARY", key: key, value: value, storage: "primary")
+                return value
+            }
+            
+            // Если в primary нет данных, пробуем fallback
+            if let fallbackValue = fallback.string(forKey: key) {
+                logger.logUserDefaultsOperation("GET_FALLBACK", key: key, value: fallbackValue, storage: "fallback")
+                return fallbackValue
+            }
+            
+            logger.log(.warning, "⚠️ No data found for key: \(key) in any storage")
+            return nil
+        }
+        
+        /// Миграция данных между сторажами для обеспечения совместимости
+        func migrateDataIfNeeded(enabledKey: String, orderKey: String) {
+            // Проверяем, есть ли данные в fallback, которых нет в primary
+            if primary !== fallback {
+                if primary.object(forKey: enabledKey) == nil && fallback.object(forKey: enabledKey) != nil {
+                    let migratedEnabled = fallback.bool(forKey: enabledKey)
+                    primary.set(migratedEnabled, forKey: enabledKey)
+                    print("[PersistenceStrategy] Мигрирован isCustomOrderEnabled: \(migratedEnabled)")
+                }
+                
+                if primary.string(forKey: orderKey) == nil, let migratedOrder = fallback.string(forKey: orderKey) {
+                    primary.set(migratedOrder, forKey: orderKey)
+                    print("[PersistenceStrategy] Мигрирован userAppOrder: \(migratedOrder.count) символов")
+                }
+                
+                primary.synchronize()
+            }
+        }
+        
+        /// Проверка целостности данных
+        func validateData(enabledKey: String, orderKey: String) -> (isValid: Bool, issues: [String]) {
+            var issues: [String] = []
+            
+            // Проверяем JSON строку
+            if let orderJSON = string(forKey: orderKey), !orderJSON.isEmpty {
+                if let data = orderJSON.data(using: .utf8) {
+                    do {
+                        _ = try JSONDecoder().decode([String].self, from: data)
+                    } catch {
+                        issues.append("Невалидный JSON в userAppOrder")
+                    }
+                } else {
+                    issues.append("Не удается преобразовать userAppOrder в Data")
+                }
+            }
+            
+            return (isValid: issues.isEmpty, issues: issues)
+        }
+    }
+    
     /// Включен ли пользовательский порядок (по умолчанию false - алфавитный)
     @Published var isCustomOrderEnabled: Bool = false {
         didSet {
-            appGroupDefaults.set(isCustomOrderEnabled, forKey: customOrderEnabledKey)
-            appGroupDefaults.synchronize() // Принудительная синхронизация
-            print("[AppOrderManager] Сохранено для пользователя \(currentUser): isCustomOrderEnabled=\(isCustomOrderEnabled)")
+            logger.log(.info, "💾 Instance \(instanceId.uuidString.prefix(8)) - Custom Order State Changed: \(oldValue) → \(isCustomOrderEnabled)")
+            persistenceStrategy.set(isCustomOrderEnabled, forKey: customOrderEnabledKey)
+            logger.log(.info, "✅ Instance \(instanceId.uuidString.prefix(8)) - Сохранено для пользователя \(currentUser): isCustomOrderEnabled=\(isCustomOrderEnabled)")
         }
     }
     
     /// Порядок приложений как JSON строка для группового хранения
     @Published private var userOrderJSON: String = "" {
         didSet {
-            appGroupDefaults.set(userOrderJSON, forKey: userAppOrderKey)
-            appGroupDefaults.synchronize() // Принудительная синхронизация
-            print("[AppOrderManager] Сохранен порядок для пользователя \(currentUser): \(userDefinedOrder.count) элементов")
+            logger.log(.info, "📝 User Order JSON Changed: \(oldValue.count) → \(userOrderJSON.count) characters")
+            persistenceStrategy.set(userOrderJSON, forKey: userAppOrderKey)
+            logger.log(.info, "✅ Сохранен порядок для пользователя \(currentUser): \(userDefinedOrder.count) элементов")
         }
     }
     
@@ -58,12 +175,36 @@ class AppOrderManager: ObservableObject {
     }
     
     init() {
-        // Загружаем данные для текущего пользователя
-        isCustomOrderEnabled = appGroupDefaults.bool(forKey: customOrderEnabledKey)
-        userOrderJSON = appGroupDefaults.string(forKey: userAppOrderKey) ?? ""
+        // Инициализируем стратегию persistence
+        self.persistenceStrategy = PersistenceStrategy()
+        
+        // Логируем создание экземпляра
+        PersistenceLogger.shared.log(.info, "🏢 AppOrderManager Instance Created: \(instanceId.uuidString.prefix(8))")
+        
+        // Выполняем миграцию данных для обеспечения совместимости
+        persistenceStrategy.migrateDataIfNeeded(enabledKey: customOrderEnabledKey, orderKey: userAppOrderKey)
+        
+        // Проверяем целостность данных
+        let validation = persistenceStrategy.validateData(enabledKey: customOrderEnabledKey, orderKey: userAppOrderKey)
+        if !validation.isValid {
+            print("[AppOrderManager] Обнаружены проблемы с данными: \(validation.issues.joined(separator: ", "))")
+            // Очищаем поврежденные данные
+            persistenceStrategy.set(false, forKey: customOrderEnabledKey)
+            persistenceStrategy.set("", forKey: userAppOrderKey)
+        }
+        
+        // Загружаем данные для текущего пользователя БЕЗ триггера didSet
+        let savedOrderEnabled = persistenceStrategy.bool(forKey: customOrderEnabledKey)
+        let savedOrderJSON = persistenceStrategy.string(forKey: userAppOrderKey) ?? ""
+        
+        // Устанавливаем значения напрямую, чтобы избежать сохранения во время загрузки
+        self._isCustomOrderEnabled = Published(initialValue: savedOrderEnabled)
+        self._userOrderJSON = Published(initialValue: savedOrderJSON)
+        
         print("[AppOrderManager] Инициализация для пользователя \(currentUser):")
+        print("[AppOrderManager] Persistence strategy: \(persistenceStrategy.description)")
+        print("[AppOrderManager] Data validation: \(validation.isValid ? "OK" : "FIXED")")
         print("[AppOrderManager] isCustomOrderEnabled=\(isCustomOrderEnabled), количество сохраненных приложений: \(userDefinedOrder.count)")
-        print("[AppOrderManager] Используем групповое хранилище: group.shorins.return-launchpad")
         
         // Подписываемся на уведомления о завершении приложения
         NotificationCenter.default.addObserver(
@@ -88,10 +229,9 @@ class AppOrderManager: ObservableObject {
     
     /// Принудительное сохранение всех данных
     func forceSave() {
-        appGroupDefaults.set(isCustomOrderEnabled, forKey: customOrderEnabledKey)
-        appGroupDefaults.set(userOrderJSON, forKey: userAppOrderKey)
-        appGroupDefaults.synchronize()
-        print("[AppOrderManager] Принудительное сохранение выполнено")
+        persistenceStrategy.set(isCustomOrderEnabled, forKey: customOrderEnabledKey)
+        persistenceStrategy.set(userOrderJSON, forKey: userAppOrderKey)
+        print("[AppOrderManager] Принудительное сохранение выполнено (стратегия: \(persistenceStrategy.description))")
     }
     
     /// Обработчик завершения приложения
@@ -102,8 +242,40 @@ class AppOrderManager: ObservableObject {
     
     /// Включает пользовательский порядок (переключает с алфавитного)
     func enableCustomOrder() {
+        logger.log(.info, "🔄 Instance \(instanceId.uuidString.prefix(8)) - enableCustomOrder() called, current: \(isCustomOrderEnabled)")
         isCustomOrderEnabled = true
+        logger.log(.info, "🔄 Instance \(instanceId.uuidString.prefix(8)) - enableCustomOrder() complete, new: \(isCustomOrderEnabled)")
         // Данные автоматически сохраняются через didSet
+    }
+    
+    /// Включает пользовательский порядок и сохраняет текущие позиции приложений
+    func enableCustomOrderWithCurrentPositions(_ apps: [AppInfo]) {
+        // Сначала сохраняем текущие позиции
+        let currentOrder = apps.map { $0.bundleIdentifier }
+        userDefinedOrder = currentOrder
+        
+        // Затем включаем пользовательский режим
+        isCustomOrderEnabled = true
+        
+        print("[AppOrderManager] Включен пользовательский порядок с сохранением \(currentOrder.count) позиций")
+        
+        // Принудительно сохраняем данные
+        forceSave()
+    }
+    
+    /// Проверяет, что пользовательская конфигурация правильно загружена
+    func verifyInitialization() -> (customOrderEnabled: Bool, savedItemsCount: Int) {
+        let savedEnabled = persistenceStrategy.bool(forKey: customOrderEnabledKey)
+        let savedJSON = persistenceStrategy.string(forKey: userAppOrderKey) ?? ""
+        let savedCount = userDefinedOrder.count
+        
+        print("[AppOrderManager] Проверка инициализации:")
+        print("[AppOrderManager] Persistence strategy: \(persistenceStrategy.description)")
+        print("[AppOrderManager] Сохраненное состояние: isCustomOrderEnabled=\(savedEnabled)")
+        print("[AppOrderManager] Текущее состояние: isCustomOrderEnabled=\(isCustomOrderEnabled)")
+        print("[AppOrderManager] Количество сохраненных элементов: \(savedCount)")
+        
+        return (customOrderEnabled: isCustomOrderEnabled, savedItemsCount: savedCount)
     }
     
     /// Возвращает к алфавитному порядку
@@ -111,6 +283,12 @@ class AppOrderManager: ObservableObject {
         isCustomOrderEnabled = false
         userDefinedOrder = []
         // Данные автоматически сохраняются через didSet
+    }
+    
+    /// Применяет текущий порядок к существующему массиву приложений без пересканирования
+    func applyCurrentOrder(_ apps: [AppInfo]) -> [AppInfo] {
+        print("[AppOrderManager] applyCurrentOrder вызван для \(apps.count) приложений")
+        return sortApps(apps)
     }
     
     /// Сортирует массив приложений согласно выбранному режиму
@@ -162,10 +340,14 @@ class AppOrderManager: ObservableObject {
     
     /// Перемещает приложение в новую позицию (для drag & drop)
     func moveApp(from sourceIndex: Int, to destinationIndex: Int, in apps: [AppInfo]) -> [AppInfo] {
+        logger.logDragDrop("START \(instanceId.uuidString.prefix(8))", fromIndex: sourceIndex, toIndex: destinationIndex, appName: apps[sourceIndex].name)
+        logger.log(.info, "🏢 Instance \(instanceId.uuidString.prefix(8)) - isCustomOrderEnabled BEFORE: \(isCustomOrderEnabled)")
+        
         // Автоматически включаем пользовательский порядок при первом перетаскивании
         if !isCustomOrderEnabled {
-            print("[AppOrderManager] Включаем пользовательский порядок")
+            logger.log(.info, "⚡️ Instance \(instanceId.uuidString.prefix(8)) - Автоматическое включение пользовательского порядка")
             enableCustomOrder()
+            logger.log(.info, "⚡️ Instance \(instanceId.uuidString.prefix(8)) - isCustomOrderEnabled AFTER enableCustomOrder: \(isCustomOrderEnabled)")
         }
         
         var reorderedApps = apps
@@ -174,8 +356,12 @@ class AppOrderManager: ObservableObject {
         
         // Обновляем пользовательский порядок
         let newOrder = reorderedApps.map { $0.bundleIdentifier }
+        let oldOrderCount = userDefinedOrder.count
         userDefinedOrder = newOrder
-        print("[AppOrderManager] Сохранен новый порядок: \(newOrder.prefix(3))...") // Показываем первые 3 для краткости
+        
+        logger.logDragDrop("COMPLETE", appName: movedApp.name)
+        logger.log(.info, "💾 Обновлен порядок: \(oldOrderCount) → \(newOrder.count) элементов")
+        
         // Принудительно сохраняем данные после drag & drop
         forceSave()
         
