@@ -19,10 +19,12 @@ class DragSessionManager: ObservableObject {
     private var globalSourceIndex: Int = 0
     private var autoScrollTimer: Timer?
     private var hoverStartTime: Date?
+    private var currentDirection: NavigationDirection?
+    private var currentMaxPages: Int = 0
     
     // MARK: - Configuration
     private let hoverThreshold: TimeInterval = 1.5 // 1.5 seconds to trigger auto-scroll
-    private let scrollInterval: TimeInterval = 0.8  // 0.8 seconds between page changes
+    private let scrollInterval: TimeInterval = 1.5  // 1.5 seconds between page changes
     
     // MARK: - Callbacks
     var onPageChange: ((Int) -> Void)?
@@ -81,8 +83,14 @@ class DragSessionManager: ObservableObject {
         guard isInCrossPageDrag else { return }
         
         if isHovering {
+            // Store current context
+            currentDirection = direction
+            currentMaxPages = maxPages
             startHoverTimer(direction: direction, currentPage: currentPage, maxPages: maxPages)
         } else {
+            // Clear context and stop auto-scroll
+            currentDirection = nil
+            currentMaxPages = 0
             stopAutoScroll()
         }
     }
@@ -91,22 +99,32 @@ class DragSessionManager: ObservableObject {
         // Don't start if we can't navigate in this direction
         if (direction == .previous && currentPage <= 0) ||
            (direction == .next && currentPage >= maxPages - 1) {
+            print("⚠️ [DragSessionManager] Cannot navigate \(direction) from page \(currentPage)")
             return
         }
         
+        // Stop any existing hover timer to prevent conflicts
+        if hoverStartTime != nil {
+            print("🔄 [DragSessionManager] Resetting hover timer for \(direction)")
+            stopAutoScroll()
+        }
+        
         hoverStartTime = Date()
+        print("⏰ [DragSessionManager] Starting hover timer for \(direction)")
         
         // Start checking for threshold
         Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
             guard let self = self,
                   let startTime = self.hoverStartTime,
                   self.isInCrossPageDrag else {
+                print("❌ [DragSessionManager] Timer invalidated - session ended")
                 timer.invalidate()
                 return
             }
             
             let elapsed = Date().timeIntervalSince(startTime)
             if elapsed >= self.hoverThreshold {
+                print("✅ [DragSessionManager] Hover threshold reached, starting auto-scroll")
                 timer.invalidate()
                 self.startAutoScroll(direction: direction)
             }
@@ -133,24 +151,35 @@ class DragSessionManager: ObservableObject {
     }
     
     private func triggerPageNavigation(direction: NavigationDirection) {
-        // Simply trigger the page change - the UI will handle bounds checking
+        guard let onPageChange = onPageChange else {
+            print("⚠️ [DragSessionManager] No page change callback available")
+            return
+        }
+        
+        // Signal navigation direction to UI - let UI handle the actual page bounds
         switch direction {
         case .previous:
             print("📄 [DragSessionManager] Triggering previous page")
+            onPageChange(-2)  // Special signal for "go previous"
         case .next:
             print("📄 [DragSessionManager] Triggering next page")
+            onPageChange(-3)  // Special signal for "go next"
         }
-        
-        // Use a dummy page number - the actual navigation will be handled by the UI
-        onPageChange?(-1) // Signal that we want to navigate, direction will be handled by UI
     }
     
     private func stopAutoScroll() {
         print("⏹ [DragSessionManager] Stopping auto-scroll")
+        
+        // Complete cleanup
         autoScrollActive = false
         hoverStartTime = nil
+        currentDirection = nil
+        
+        // Invalidate timer
         autoScrollTimer?.invalidate()
         autoScrollTimer = nil
+        
+        print("✅ [DragSessionManager] Auto-scroll stopped and cleaned up")
     }
     
     private func cleanup() {

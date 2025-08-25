@@ -183,14 +183,26 @@ struct ContentView: View {
                                                 dragSessionManager: dragSessionManager,
                                                 currentPage: $currentPage,
                                                 maxPages: pageCount,
-                                                onPageChange: { newPage in
-                                                    if dragSessionManager.isInCrossPageDrag {
-                                                        // Immediate update during cross-page drag
-                                                        currentPage = newPage
-                                                    } else {
-                                                        // Normal animated transition
-                                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                                onPageChange: { signal in
+                                                    // Handle direction signals from DragSessionManager
+                                                    if signal == -2 { // Previous page
+                                                        let newPage = max(0, currentPage - 1)
+                                                        if newPage != currentPage {
                                                             currentPage = newPage
+                                                        }
+                                                    } else if signal == -3 { // Next page
+                                                        let newPage = min(pageCount - 1, currentPage + 1)
+                                                        if newPage != currentPage {
+                                                            currentPage = newPage
+                                                        }
+                                                    } else if signal >= 0 {
+                                                        // Direct page number (for backward compatibility)
+                                                        if dragSessionManager.isInCrossPageDrag {
+                                                            currentPage = signal
+                                                        } else {
+                                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                                currentPage = signal
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -226,14 +238,26 @@ struct ContentView: View {
                                                 dragSessionManager: dragSessionManager,
                                                 currentPage: $currentPage,
                                                 maxPages: pageCount,
-                                                onPageChange: { newPage in
-                                                    if dragSessionManager.isInCrossPageDrag {
-                                                        // Immediate update during cross-page drag
-                                                        currentPage = newPage
-                                                    } else {
-                                                        // Normal animated transition
-                                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                                onPageChange: { signal in
+                                                    // Handle direction signals from DragSessionManager
+                                                    if signal == -2 { // Previous page
+                                                        let newPage = max(0, currentPage - 1)
+                                                        if newPage != currentPage {
                                                             currentPage = newPage
+                                                        }
+                                                    } else if signal == -3 { // Next page
+                                                        let newPage = min(pageCount - 1, currentPage + 1)
+                                                        if newPage != currentPage {
+                                                            currentPage = newPage
+                                                        }
+                                                    } else if signal >= 0 {
+                                                        // Direct page number (for backward compatibility)
+                                                        if dragSessionManager.isInCrossPageDrag {
+                                                            currentPage = signal
+                                                        } else {
+                                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                                currentPage = signal
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -288,10 +312,22 @@ struct ContentView: View {
             }
             
             // Setup drag session manager callbacks
-            dragSessionManager.onPageChange = { newPage in
-                // This is a simplified signal - actual direction handling is done in the hover delegate
-                // The real navigation happens through the CrossPageNavigationDelegate
-                print("📄 [ContentView] Received page change signal from DragSessionManager")
+            dragSessionManager.onPageChange = { signal in
+                // Handle direction signals from DragSessionManager
+                // Note: Boundary checking is already done in the individual delegates
+                
+                if signal == -2 { // Previous page
+                    let newPage = max(0, currentPage - 1)
+                    if newPage != currentPage {
+                        print("📄 [ContentView] DragSessionManager navigating to previous page: \(currentPage) → \(newPage)")
+                        currentPage = newPage
+                    }
+                } else if signal == -3 { // Next page
+                    // We'll trust that the CrossPageNavigationDelegate already did boundary checking
+                    let newPage = currentPage + 1
+                    print("📄 [ContentView] DragSessionManager navigating to next page: \(currentPage) → \(newPage)")
+                    currentPage = newPage
+                }
             }
             
             dragSessionManager.onDragComplete = { globalSource, globalTarget in
@@ -722,9 +758,6 @@ struct CrossPageNavigationDelegate: DropDelegate {
     let maxPages: Int
     let onPageChange: (Int) -> Void
     
-    @State private var autoScrollTimer: Timer?
-    @State private var isAutoScrolling = false
-    
     func dropEntered(info: DropInfo) {
         guard dragSessionManager.isInCrossPageDrag else { return }
         print("👆 [CrossPageNavigationDelegate] Drag entered \(direction) arrow")
@@ -734,69 +767,36 @@ struct CrossPageNavigationDelegate: DropDelegate {
                          (direction == .next && currentPage < maxPages - 1)
         
         if canNavigate {
-            startAutoScrollAfterDelay()
+            // Use DragSessionManager's timer system
+            dragSessionManager.handleArrowHover(
+                direction: direction,
+                isHovering: true,
+                currentPage: currentPage,
+                maxPages: maxPages
+            )
         }
     }
     
     func dropExited(info: DropInfo) {
         print("👇 [CrossPageNavigationDelegate] Drag exited \(direction) arrow")
-        stopAutoScroll()
+        // Stop DragSessionManager's timer
+        dragSessionManager.handleArrowHover(
+            direction: direction,
+            isHovering: false,
+            currentPage: currentPage,
+            maxPages: maxPages
+        )
     }
     
     func performDrop(info: DropInfo) -> Bool {
         print("🎯 [CrossPageNavigationDelegate] Drop on \(direction) arrow")
-        stopAutoScroll()
+        // Stop auto-scroll
+        dragSessionManager.handleArrowHover(
+            direction: direction,
+            isHovering: false,
+            currentPage: currentPage,
+            maxPages: maxPages
+        )
         return false // Let the main drop handler take care of the actual drop
-    }
-    
-    private func startAutoScrollAfterDelay() {
-        // Wait 1.5 seconds, then start auto-scrolling
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            guard dragSessionManager.isInCrossPageDrag && !isAutoScrolling else { return }
-            
-            print("⏩ [CrossPageNavigationDelegate] Starting auto-scroll \(direction)")
-            isAutoScrolling = true
-            dragSessionManager.autoScrollActive = true
-            
-            // Immediate first navigation
-            triggerNavigation()
-            
-            // Continue with interval
-            autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { _ in
-                guard dragSessionManager.isInCrossPageDrag && isAutoScrolling else {
-                    stopAutoScroll()
-                    return
-                }
-                triggerNavigation()
-            }
-        }
-    }
-    
-    private func triggerNavigation() {
-        let newPage: Int
-        
-        switch direction {
-        case .previous:
-            newPage = max(0, currentPage - 1)
-        case .next:
-            newPage = min(maxPages - 1, currentPage + 1)
-        }
-        
-        if newPage != currentPage {
-            print("📄 [CrossPageNavigationDelegate] Navigating \(direction): \(currentPage) → \(newPage)")
-            // IMMEDIATE update without animation during drag
-            onPageChange(newPage)
-        } else {
-            print("⚠️ [CrossPageNavigationDelegate] Cannot navigate further \(direction)")
-            stopAutoScroll()
-        }
-    }
-    
-    private func stopAutoScroll() {
-        print("⏹ [CrossPageNavigationDelegate] Stopping auto-scroll")
-        isAutoScrolling = false
-        dragSessionManager.autoScrollActive = false
-        autoScrollTimer?.invalidate()
-        autoScrollTimer = nil
     }
 }
