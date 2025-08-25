@@ -3,7 +3,7 @@
 <div align="center">
   <img src="images/launchpadIcon.png" alt="Return Launchpad Icon" width="128" height="128"/>
   
-  **Bring back the full-screen app launcher to macOS Sequoia**
+  **Bring back the full-screen app launcher to macOS Tahoe**
   
   [![macOS](https://img.shields.io/badge/macOS-15.5+-blue.svg)](https://www.apple.com/macos/)
   [![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org/)
