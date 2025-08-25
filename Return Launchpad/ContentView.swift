@@ -13,6 +13,10 @@ struct ContentView: View {
     @State private var hoverId: UUID?
     @State private var currentPage: Int = 0
     @FocusState private var isSearchFocused: Bool
+    
+    // Drag & Drop состояния
+    @State private var draggedItem: AppInfo?
+    @State private var isInDragMode: Bool = false
 
     // Фильтрует приложения на основе текста в поиске
     private var filteredApps: [AppInfo] {
@@ -44,20 +48,71 @@ struct ContentView: View {
 
                 VStack(spacing: 0) {
                     // Поле для поиска
-                    TextField("Найти приложение...", text: $searchText)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .font(.title2)
-                        .padding()
-                        .background(Color.black.opacity(0.25))
-                        .cornerRadius(12)
-                        .padding(.horizontal, 40)
-                        .padding(.top, 20)
-                        .padding(.bottom, 15)
-                        .frame(maxWidth: 450)
-                        .focused($isSearchFocused)
-                        .onChange(of: searchText) { oldValue, newValue in
-                            currentPage = 0 // Сбрасываем страницу при новом поиске
+                    VStack(spacing: 8) {
+                        TextField("Найти приложение...", text: $searchText)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .font(.title2)
+                            .padding()
+                            .background(Color.black.opacity(0.25))
+                            .cornerRadius(12)
+                            .padding(.horizontal, 40)
+                            .frame(maxWidth: 450)
+                            .focused($isSearchFocused)
+                            .onChange(of: searchText) { oldValue, newValue in
+                                currentPage = 0 // Сбрасываем страницу при новом поиске
+                            }
+                        
+                        // Индикатор режима упорядочивания
+                        if appManager.isCustomOrderEnabled || appManager.hasNewApps {
+                            HStack(spacing: 12) {
+                                if appManager.isCustomOrderEnabled {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "arrow.up.arrow.down")
+                                        Text("Пользовательский порядок")
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(.blue.opacity(0.9))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.blue.opacity(0.2))
+                                    .cornerRadius(8)
+                                }
+                                
+                                if appManager.hasNewApps {
+                                    let stats = appManager.getOrderingStats()
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "plus.circle")
+                                        Text("Новых: \(stats.newApps)")
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(.green.opacity(0.9))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.green.opacity(0.2))
+                                    .cornerRadius(8)
+                                }
+                                
+                                // Кнопка сброса к алфавитному порядку
+                                if appManager.isCustomOrderEnabled {
+                                    Button("Алфавит") {
+                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                            appManager.resetToAlphabeticalOrder()
+                                        }
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.black.opacity(0.3))
+                                    .cornerRadius(8)
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
+                    }
+                    .padding(.top, 20)
+                    .padding(.bottom, 15)
 
                     // Проверяем, есть ли что показывать
                     if !filteredApps.isEmpty {
@@ -70,8 +125,19 @@ struct ContentView: View {
                         HStack {
                             Spacer()
                             LazyVGrid(columns: createGridColumns(geometry: geometry, totalItems: pageApps.count), spacing: 20) {
-                                ForEach(pageApps) { app in
+                                ForEach(pageApps, id: \.id) { app in
                                     appIconView(app: app)
+                                        .onDrag {
+                                            draggedItem = app
+                                            isInDragMode = true
+                                            return NSItemProvider(object: app.bundleIdentifier as NSString)
+                                        }
+                                        .onDrop(of: [.text], delegate: DropDelegate(
+                                            app: app,
+                                            apps: $appManager.apps,
+                                            appManager: appManager,
+                                            draggedItem: $draggedItem
+                                        ))
                                 }
                             }
                             Spacer()
@@ -81,6 +147,15 @@ struct ContentView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         .animation(.easeInOut(duration: 0.2), value: currentPage)
                         .animation(.easeInOut(duration: 0.2), value: filteredApps)
+                        
+                        // Подсказка о перетаскивании
+                        if !appManager.isCustomOrderEnabled && searchText.isEmpty && !isInDragMode {
+                            Text("Перетащите иконки, чтобы изменить порядок")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.6))
+                                .padding(.top, 8)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                         
                         Spacer() // Прижимает навигацию к низу
                         
@@ -143,6 +218,7 @@ struct ContentView: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 80, height: 80)
+                .opacity(draggedItem?.id == app.id ? 0.5 : 1.0) // Прозрачность при перетаскивании
 
             Text(app.name)
                 .font(.caption)
@@ -150,21 +226,38 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
                 .foregroundColor(.white)
                 .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
-                .frame(height: 32) // Фиксированная высота для текста
+                .frame(height: 32)
         }
-        .frame(width: 120, height: 120) // Фиксированный размер контейнера
+        .frame(width: 120, height: 120)
         .padding(10)
         .background(hoverId == app.id ? Color.white.opacity(0.2) : Color.clear)
+        .overlay(
+            RoundedRectangle(cornerRadius: 15)
+                .stroke(isInDragMode ? Color.blue.opacity(0.5) : Color.clear, lineWidth: 2)
+        )
         .cornerRadius(15)
         .scaleEffect(hoverId == app.id ? 1.05 : 1.0)
+        .rotationEffect(.degrees(draggedItem?.id == app.id ? 5 : 0))
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: draggedItem?.id)
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: hoverId)
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isInDragMode)
         .onHover { isHovering in
             withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                 hoverId = isHovering ? app.id : nil
             }
         }
         .onTapGesture {
-            NSWorkspace.shared.open(app.url)
-            NSApplication.shared.terminate(nil) // Закрываем лаунчпад после запуска
+            if !isInDragMode {
+                NSWorkspace.shared.open(app.url)
+                NSApplication.shared.terminate(nil)
+            }
+        }
+        .onChange(of: draggedItem) { oldValue, newValue in
+            if newValue == nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isInDragMode = false
+                }
+            }
         }
     }
     
@@ -296,4 +389,46 @@ struct VisualEffectBlur: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
+/// DropDelegate для обработки drag & drop
+struct DropDelegate: SwiftUI.DropDelegate {
+    let app: AppInfo
+    @Binding var apps: [AppInfo]
+    let appManager: AppManager
+    @Binding var draggedItem: AppInfo?
+    
+    func performDrop(info: DropInfo) -> Bool {
+        guard let draggedItem = draggedItem else { return false }
+        
+        if draggedItem.id != app.id {
+            let fromIndex = apps.firstIndex(where: { $0.id == draggedItem.id })
+            let toIndex = apps.firstIndex(where: { $0.id == app.id })
+            
+            if let fromIndex = fromIndex, let toIndex = toIndex {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    appManager.moveApp(from: fromIndex, to: toIndex)
+                }
+            }
+        }
+        
+        self.draggedItem = nil
+        return true
+    }
+    
+    func dropEntered(info: DropInfo) {
+        // Предварительное перемещение для визуальной обратной связи
+        guard let draggedItem = draggedItem else { return }
+        
+        if draggedItem.id != app.id {
+            let fromIndex = apps.firstIndex(where: { $0.id == draggedItem.id })
+            let toIndex = apps.firstIndex(where: { $0.id == app.id })
+            
+            if let fromIndex = fromIndex, let toIndex = toIndex {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    apps.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+                }
+            }
+        }
+    }
 }
