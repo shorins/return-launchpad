@@ -14,7 +14,8 @@ struct ContentView: View {
     @State private var currentPage: Int = 0
     @FocusState private var isSearchFocused: Bool
     
-    // Drag & Drop состояния - Pure iPhone style
+    // Drag & Drop состояния - Pure iPhone style with cross-page support
+    @StateObject private var dragSessionManager = DragSessionManager()
     @State private var draggedItem: AppInfo?
     @State private var isInDragMode: Bool = false
     @State private var draggedItemOriginalIndex: Int?
@@ -151,27 +152,108 @@ struct ContentView: View {
                         
                         Spacer() // Прижимает навигацию к низу
                         
-                        // Блок навигации по страницам
+                        // Блок навигации по страницам с поддержкой cross-page drag
                         if pageCount > 1 {
                             HStack {
                                 Spacer()
                                 HStack {
-                                    Button(action: { if currentPage > 0 { currentPage -= 1 } }) {
+                                    // Left arrow with drag hover detection
+                                    Button(action: { 
+                                        if currentPage > 0 { 
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                currentPage -= 1 
+                                            }
+                                        } 
+                                    }) {
                                         Image(systemName: "chevron.left")
-                                    }.disabled(currentPage == 0)
+                                            .foregroundColor(currentPage == 0 ? .gray : .white)
+                                    }
+                                    .disabled(currentPage == 0)
+                                    .onDrop(of: [.text], isTargeted: nil) { providers in
+                                        // Handle cross-page drop from left
+                                        return handleCrossPageDrop(direction: .previous, itemsPerPage: itemsPerPage)
+                                    }
+                                    .background(
+                                        // Invisible hover zone for drag detection
+                                        Rectangle()
+                                            .fill(Color.clear)
+                                            .frame(width: 60, height: 60)
+                                            .onDrop(of: [.text], delegate: CrossPageNavigationDelegate(
+                                                direction: .previous,
+                                                dragSessionManager: dragSessionManager,
+                                                currentPage: $currentPage,
+                                                maxPages: pageCount,
+                                                onPageChange: { newPage in
+                                                    if dragSessionManager.isInCrossPageDrag {
+                                                        // Immediate update during cross-page drag
+                                                        currentPage = newPage
+                                                    } else {
+                                                        // Normal animated transition
+                                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                                            currentPage = newPage
+                                                        }
+                                                    }
+                                                }
+                                            ))
+                                    )
                                     
                                     Text("\(currentPage + 1) из \(pageCount)")
                                         .font(.body).foregroundColor(.white.opacity(0.8))
                                     
-                                    Button(action: { if currentPage < pageCount - 1 { currentPage += 1 } }) {
+                                    // Right arrow with drag hover detection  
+                                    Button(action: { 
+                                        if currentPage < pageCount - 1 { 
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                currentPage += 1 
+                                            }
+                                        } 
+                                    }) {
                                         Image(systemName: "chevron.right")
-                                    }.disabled(currentPage >= pageCount - 1)
+                                            .foregroundColor(currentPage >= pageCount - 1 ? .gray : .white)
+                                    }
+                                    .disabled(currentPage >= pageCount - 1)
+                                    .onDrop(of: [.text], isTargeted: nil) { providers in
+                                        // Handle cross-page drop from right
+                                        return handleCrossPageDrop(direction: .next, itemsPerPage: itemsPerPage)
+                                    }
+                                    .background(
+                                        // Invisible hover zone for drag detection
+                                        Rectangle()
+                                            .fill(Color.clear)
+                                            .frame(width: 60, height: 60)
+                                            .onDrop(of: [.text], delegate: CrossPageNavigationDelegate(
+                                                direction: .next,
+                                                dragSessionManager: dragSessionManager,
+                                                currentPage: $currentPage,
+                                                maxPages: pageCount,
+                                                onPageChange: { newPage in
+                                                    if dragSessionManager.isInCrossPageDrag {
+                                                        // Immediate update during cross-page drag
+                                                        currentPage = newPage
+                                                    } else {
+                                                        // Normal animated transition
+                                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                                            currentPage = newPage
+                                                        }
+                                                    }
+                                                }
+                                            ))
+                                    )
                                 }
                                 .buttonStyle(.plain)
                                 .font(.title2)
                                 .padding()
                                 .background(Color.black.opacity(0.2))
                                 .cornerRadius(15)
+                                .overlay(
+                                    // Visual indicator for active auto-scroll
+                                    RoundedRectangle(cornerRadius: 15)
+                                        .stroke(
+                                            dragSessionManager.autoScrollActive ? Color.blue.opacity(0.8) : Color.clear, 
+                                            lineWidth: 2
+                                        )
+                                        .animation(.easeInOut(duration: 0.2), value: dragSessionManager.autoScrollActive)
+                                )
                                 Spacer()
                             }
                             .padding(.bottom, 20)
@@ -204,6 +286,18 @@ struct ContentView: View {
                 window.isOpaque = false
                 window.backgroundColor = .clear
             }
+            
+            // Setup drag session manager callbacks
+            dragSessionManager.onPageChange = { newPage in
+                // This is a simplified signal - actual direction handling is done in the hover delegate
+                // The real navigation happens through the CrossPageNavigationDelegate
+                print("📄 [ContentView] Received page change signal from DragSessionManager")
+            }
+            
+            dragSessionManager.onDragComplete = { globalSource, globalTarget in
+                print("🎯 [ContentView] Cross-page drag complete: \(globalSource) → \(globalTarget)")
+                appManager.moveApp(from: globalSource, to: globalTarget)
+            }
         }
     }
 
@@ -212,8 +306,15 @@ struct ContentView: View {
         let columns = createGridColumns(geometry: geometry, totalItems: pageApps.count)
         let itemsPerRow = columns.count
         
-        // Use stable layout during drag - no complex flowing, just stable positions
-        let displayApps = isInDragMode ? stablePageApps : pageApps
+        // CRITICAL: Allow visual page updates during cross-page drag
+        // Only use stable layout if we're on the original drag page
+        let shouldUseStableLayout = isInDragMode && 
+                                   !dragSessionManager.isInCrossPageDrag && 
+                                   currentPage == dragSessionManager.startPage
+        
+        let displayApps = shouldUseStableLayout ? stablePageApps : pageApps
+        
+        print("🎨 [GridView] Page \(currentPage): shouldUseStableLayout=\(shouldUseStableLayout), displayApps.count=\(displayApps.count)")
         
         return VStack(spacing: 20) {
             ForEach(0..<Int(ceil(Double(displayApps.count) / Double(itemsPerRow))), id: \.self) { rowIndex in
@@ -228,12 +329,20 @@ struct ContentView: View {
                             appIconView(app: app)
                                 .offset(dropAnimationOffset)
                                 .onDrag {
-                                    print("🎯 DRAG STARTED: \(app.name) at index \(appIndex)")
+                                    print("🎯 CROSS-PAGE DRAG STARTED: \(app.name) at index \(appIndex) on page \(currentPage)")
                                     draggedItem = app
                                     draggedItemOriginalIndex = appIndex
-                                    stablePageApps = pageApps  // Capture stable layout
+                                    stablePageApps = pageApps  // Capture stable layout of CURRENT page
                                     isInDragMode = true
                                     dropAnimationOffset = .zero
+                                    
+                                    // Initialize cross-page drag session
+                                    dragSessionManager.startDragSession(
+                                        sourceIndex: appIndex,
+                                        currentPage: currentPage,
+                                        itemsPerPage: itemsPerPage
+                                    )
+                                    
                                     return NSItemProvider(object: app.bundleIdentifier as NSString)
                                 }
                                 .onDrop(of: [.text], delegate: PureIPhoneDropDelegate(
@@ -247,9 +356,14 @@ struct ContentView: View {
                                     stablePageApps: $stablePageApps,
                                     dropAnimationOffset: $dropAnimationOffset,
                                     currentPage: currentPage,
-                                    itemsPerPage: itemsPerPage  // ✅ ИСПРАВЛЕНО: используем переданный параметр
+                                    itemsPerPage: itemsPerPage,  // ✅ ИСПРАВЛЕНО: используем переданный параметр
+                                    dragSessionManager: dragSessionManager
                                 ))
                                 .opacity(draggedItem?.id == app.id ? 0.1 : 1.0)
+                                // Hide dragged item if we're on a different page during cross-page drag
+                                .opacity((dragSessionManager.isInCrossPageDrag && 
+                                         currentPage != dragSessionManager.startPage && 
+                                         draggedItem?.id == app.id) ? 0.0 : 1.0)
                                 .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draggedItem?.id)
                                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: dropAnimationOffset)
                         } else {
@@ -311,6 +425,8 @@ struct ContentView: View {
         }
         .onChange(of: draggedItem) { oldValue, newValue in
             if newValue == nil {
+                // End drag session when item is released
+                dragSessionManager.endDragSession()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     isInDragMode = false
                 }
@@ -376,6 +492,58 @@ struct ContentView: View {
         if startIndex >= endIndex { return [] }
         
         return Array(filteredApps[startIndex..<endIndex])
+    }
+    
+    /// Handles cross-page drop operations with immediate visual updates
+    private func handleCrossPageDrop(direction: NavigationDirection, itemsPerPage: Int) -> Bool {
+        guard dragSessionManager.isInCrossPageDrag,
+              let draggedItemOriginalIndex = draggedItemOriginalIndex else {
+            print("⚠️ [ContentView] Cross-page drop attempted but not in cross-page drag mode")
+            return false
+        }
+        
+        print("🎯 [ContentView] Handling cross-page drop to \(direction)")
+        
+        // Calculate target position based on direction
+        let targetPage: Int
+        let targetIndex: Int
+        
+        switch direction {
+        case .previous:
+            targetPage = max(0, currentPage - 1)
+            targetIndex = itemsPerPage - 1 // End of previous page
+        case .next:
+            targetPage = min(currentPage + 1, (filteredApps.count + itemsPerPage - 1) / itemsPerPage - 1)
+            targetIndex = 0 // Beginning of next page
+        }
+        
+        if targetPage != currentPage {
+            print("📄 [ContentView] Navigating to page \(targetPage) for drop")
+            
+            // IMMEDIATE visual navigation without animation during drag
+            currentPage = targetPage
+            
+            // Complete the drop after a brief delay to allow UI update
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                // Calculate global indices using original source page
+                let globalSourceIndex = self.dragSessionManager.startPage * itemsPerPage + draggedItemOriginalIndex
+                let globalTargetIndex = targetPage * itemsPerPage + targetIndex
+                
+                print("🎯 [ContentView] Executing cross-page move: \(globalSourceIndex) → \(globalTargetIndex)")
+                
+                // Execute the move
+                self.appManager.moveApp(from: globalSourceIndex, to: globalTargetIndex)
+                
+                // Reset drag state
+                self.draggedItem = nil
+                self.draggedItemOriginalIndex = nil
+                self.isInDragMode = false
+                self.stablePageApps = []
+                self.dragSessionManager.endDragSession()
+            }
+        }
+        
+        return true
     }
 }
 
@@ -461,6 +629,7 @@ struct PureIPhoneDropDelegate: SwiftUI.DropDelegate {
     @Binding var dropAnimationOffset: CGSize
     let currentPage: Int
     let itemsPerPage: Int
+    let dragSessionManager: DragSessionManager
     
     func dropEntered(info: DropInfo) {
         // Only update target if it's different from current position
@@ -487,21 +656,22 @@ struct PureIPhoneDropDelegate: SwiftUI.DropDelegate {
         
         print("🔄 iPhone Moving \(draggedItem.name) from local index \(originalIndex) to local index \(targetIndex)")
         
-        // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Правильный расчет глобальных индексов
-        // Получаем стартовый индекс текущей страницы в общем массиве
-        let pageStartIndex = currentPage * itemsPerPage
-        let globalOriginalIndex = pageStartIndex + originalIndex
-        let globalTargetIndex = pageStartIndex + targetIndex
+        // CROSS-PAGE LOGIC: Use original drag page for source, current page for target
+        let sourcePage = dragSessionManager.isInCrossPageDrag ? dragSessionManager.startPage : currentPage
+        let targetPage = currentPage
         
-        print("🌍 CRITICAL INDEX DEBUG:")
-        print("   • Current page: \(currentPage)")
+        let globalOriginalIndex = sourcePage * itemsPerPage + originalIndex
+        let globalTargetIndex = targetPage * itemsPerPage + targetIndex
+        
+        print("🌍 CROSS-PAGE INDEX DEBUG:")
+        print("   • Is cross-page drag: \(dragSessionManager.isInCrossPageDrag)")
+        print("   • Source page: \(sourcePage) (original drag page)")
+        print("   • Target page: \(targetPage) (current page)")
         print("   • Items per page (CONSISTENT): \(itemsPerPage)")
-        print("   • Page start index: \(pageStartIndex)")
         print("   • Local original: \(originalIndex) → Global: \(globalOriginalIndex)")
         print("   • Local target: \(targetIndex) → Global: \(globalTargetIndex)")
         print("   • Total apps in manager: \(appManager.apps.count)")
         print("   • Apps on this page: \(displayApps.count)")
-        print("   • Expected range: \(pageStartIndex)..<\(pageStartIndex + itemsPerPage)")
         
         // Дополнительная проверка: убеждаемся, что перемещение имеет смысл
         if originalIndex == targetIndex {
@@ -541,5 +711,92 @@ struct PureIPhoneDropDelegate: SwiftUI.DropDelegate {
         }
         
         return true
+    }
+}
+
+/// Delegate for handling drag hover over navigation arrows with auto-scroll
+struct CrossPageNavigationDelegate: DropDelegate {
+    let direction: NavigationDirection
+    let dragSessionManager: DragSessionManager
+    @Binding var currentPage: Int
+    let maxPages: Int
+    let onPageChange: (Int) -> Void
+    
+    @State private var autoScrollTimer: Timer?
+    @State private var isAutoScrolling = false
+    
+    func dropEntered(info: DropInfo) {
+        guard dragSessionManager.isInCrossPageDrag else { return }
+        print("👆 [CrossPageNavigationDelegate] Drag entered \(direction) arrow")
+        
+        // Check if we can navigate in this direction
+        let canNavigate = (direction == .previous && currentPage > 0) || 
+                         (direction == .next && currentPage < maxPages - 1)
+        
+        if canNavigate {
+            startAutoScrollAfterDelay()
+        }
+    }
+    
+    func dropExited(info: DropInfo) {
+        print("👇 [CrossPageNavigationDelegate] Drag exited \(direction) arrow")
+        stopAutoScroll()
+    }
+    
+    func performDrop(info: DropInfo) -> Bool {
+        print("🎯 [CrossPageNavigationDelegate] Drop on \(direction) arrow")
+        stopAutoScroll()
+        return false // Let the main drop handler take care of the actual drop
+    }
+    
+    private func startAutoScrollAfterDelay() {
+        // Wait 1.5 seconds, then start auto-scrolling
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            guard dragSessionManager.isInCrossPageDrag && !isAutoScrolling else { return }
+            
+            print("⏩ [CrossPageNavigationDelegate] Starting auto-scroll \(direction)")
+            isAutoScrolling = true
+            dragSessionManager.autoScrollActive = true
+            
+            // Immediate first navigation
+            triggerNavigation()
+            
+            // Continue with interval
+            autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { _ in
+                guard dragSessionManager.isInCrossPageDrag && isAutoScrolling else {
+                    stopAutoScroll()
+                    return
+                }
+                triggerNavigation()
+            }
+        }
+    }
+    
+    private func triggerNavigation() {
+        let newPage: Int
+        
+        switch direction {
+        case .previous:
+            newPage = max(0, currentPage - 1)
+        case .next:
+            newPage = min(maxPages - 1, currentPage + 1)
+        }
+        
+        if newPage != currentPage {
+            print("📄 [CrossPageNavigationDelegate] Navigating \(direction): \(currentPage) → \(newPage)")
+            // IMMEDIATE update without animation during drag
+            onPageChange(newPage)
+        } else {
+            print("⚠️ [CrossPageNavigationDelegate] Cannot navigate further \(direction)")
+            stopAutoScroll()
+        }
+    }
+    
+    private func stopAutoScroll() {
+        print("⏹ [CrossPageNavigationDelegate] Stopping auto-scroll")
+        isAutoScrolling = false
+        dragSessionManager.autoScrollActive = false
+        autoScrollTimer?.invalidate()
+        autoScrollTimer = nil
     }
 }
