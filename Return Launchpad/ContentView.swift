@@ -14,6 +14,9 @@ struct ContentView: View {
     @State private var currentPage: Int = 0
     @FocusState private var isSearchFocused: Bool
     
+    // Анимация
+    @Namespace private var namespace
+    
     // Drag & Drop состояния
     @StateObject private var dragSessionManager = DragSessionManager()
     @State private var draggedItem: AppInfo?
@@ -78,7 +81,6 @@ struct ContentView: View {
                 ))
             )
             .onAppear {
-                // Сначала инициализируем массив, чтобы избежать гонки состояний
                 self.filteredApps = appManager.apps
                 setupWindow()
                 setupDragSessionManager()
@@ -183,7 +185,6 @@ struct ContentView: View {
         .padding(.vertical, 20)
         .transition(.opacity.combined(with: .scale(scale: 0.95)))
         .animation(.easeInOut(duration: 0.2), value: currentPage)
-        .animation(.easeInOut(duration: 0.2), value: filteredApps)
     }
     
     private var dragTipView: some View {
@@ -282,6 +283,7 @@ struct ContentView: View {
                 .foregroundColor(.white).shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
                 .frame(height: 32)
         }
+        .matchedGeometryEffect(id: app.id, in: namespace)
         .frame(width: 120, height: 120)
         .padding(10)
         .background(hoverId == app.id ? Color.white.opacity(0.2) : Color.clear)
@@ -399,11 +401,13 @@ struct ContentView: View {
     }
     
     private func updateFilteredApps() {
-        if searchText.isEmpty {
-            filteredApps = appManager.apps
-        } else {
-            filteredApps = appManager.apps.filter {
-                $0.name.lowercased().contains(searchText.lowercased())
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            if searchText.isEmpty {
+                filteredApps = appManager.apps
+            } else {
+                filteredApps = appManager.apps.filter {
+                    $0.name.lowercased().contains(searchText.lowercased())
+                }
             }
         }
     }
