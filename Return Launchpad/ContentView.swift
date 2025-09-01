@@ -461,7 +461,7 @@ struct KeyboardHandler: NSViewRepresentable {
     let onGoToNext: () -> Void
     var isSearchFocused: Bool
     
-    func makeNSView(context: Context) -> NSView {
+    func makeNSView(context: Context) -> KeyboardEventView {
         let view = KeyboardEventView()
         view.onKeyDown = { event in
             guard !isSearchFocused else { return }
@@ -474,7 +474,12 @@ struct KeyboardHandler: NSViewRepresentable {
         return view
     }
     
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: KeyboardEventView, context: Context) {
+        // Если поле поиска не в фокусе, наш обработчик должен быть первым ответчиком
+        if !isSearchFocused && nsView.window?.firstResponder != nsView {
+            nsView.window?.makeFirstResponder(nsView)
+        }
+    }
 }
 
 class KeyboardEventView: NSView {
