@@ -23,16 +23,8 @@ struct ContentView: View {
 
     // ОПТИМИЗАЦИЯ: Кэшируем конфигурацию макета
     @State private var layoutConfig: (itemsPerPage: Int, maxColumns: Int)?
-
-    private var filteredApps: [AppInfo] {
-        if searchText.isEmpty {
-            return appManager.apps
-        } else {
-            return appManager.apps.filter {
-                $0.name.lowercased().contains(searchText.lowercased())
-            }
-        }
-    }
+    // ОПТИМИЗАЦИЯ: Кэшируем отфильтрованные приложения
+    @State private var filteredApps: [AppInfo] = []
 
     var body: some View {
         GeometryReader { geometry in
@@ -86,15 +78,20 @@ struct ContentView: View {
                 ))
             )
             .onAppear {
+                // Сначала инициализируем массив, чтобы избежать гонки состояний
+                self.filteredApps = appManager.apps
                 setupWindow()
                 setupDragSessionManager()
-                updateLayoutConfig(geometry: geometry, totalApps: filteredApps.count)
+                updateLayoutConfig(geometry: geometry, totalApps: self.filteredApps.count)
             }
             .onChange(of: geometry.size) {
                 updateLayoutConfig(geometry: geometry, totalApps: filteredApps.count)
             }
             .onChange(of: filteredApps.count) {
                 updateLayoutConfig(geometry: geometry, totalApps: filteredApps.count)
+            }
+            .onChange(of: appManager.apps) {
+                updateFilteredApps()
             }
         }
     }
@@ -113,7 +110,10 @@ struct ContentView: View {
                     .cornerRadius(12)
                     .frame(maxWidth: 450)
                     .focused($isSearchFocused)
-                    .onChange(of: searchText) { currentPage = 0 }
+                    .onChange(of: searchText) {
+                        currentPage = 0
+                        updateFilteredApps()
+                    }
                 
                 if appManager.isCustomOrderEnabled || appManager.hasNewApps {
                     infoIndicatorsView
@@ -365,7 +365,7 @@ struct ContentView: View {
         let availableHeight = geometry.size.height - searchAreaHeight - navigationHeight - gridPadding
         let availableWidth = geometry.size.width - 80
         
-        let itemHeight: CGFloat = 120 // ИСПРАВЛЕНО: Возвращено оригинальное значение для правильного расчета рядов
+        let itemHeight: CGFloat = 120
         let itemWidth: CGFloat = 140
         let spacing: CGFloat = 20
 
@@ -386,9 +386,7 @@ struct ContentView: View {
         let itemWidth: CGFloat = 140
         let spacing: CGFloat = 20
         
-        // Для маленьких результатов поиска используем меньше колонок для центрирования
         let columns = min(maxColumns, totalItems)
-        // Используем фиксированный размер вместо .flexible() для сохранения одинаковых отступов и центрирования
         return Array(repeating: GridItem(.fixed(itemWidth), spacing: spacing), count: columns)
     }
     
@@ -398,6 +396,16 @@ struct ContentView: View {
         let endIndex = min(startIndex + itemsPerPage, filteredApps.count)
         guard startIndex < endIndex else { return [] }
         return Array(filteredApps[startIndex..<endIndex])
+    }
+    
+    private func updateFilteredApps() {
+        if searchText.isEmpty {
+            filteredApps = appManager.apps
+        } else {
+            filteredApps = appManager.apps.filter {
+                $0.name.lowercased().contains(searchText.lowercased())
+            }
+        }
     }
 }
 
