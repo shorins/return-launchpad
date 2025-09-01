@@ -16,6 +16,8 @@ struct ContentView: View {
     
     // Анимация
     @Namespace private var namespace
+    @State private var pageTransitionDirection: Edge = .leading
+    @State private var isInitialLoad = true
     
     // Drag & Drop состояния
     @StateObject private var dragSessionManager = DragSessionManager()
@@ -51,6 +53,7 @@ struct ContentView: View {
                             let pageApps = appsForPage(currentPage, itemsPerPage: config.itemsPerPage)
                             
                             mainGridView(pageApps: pageApps, geometry: geometry, config: config)
+                                .id("page_\(currentPage)")
                             
                             dragTipView
 
@@ -70,21 +73,17 @@ struct ContentView: View {
                 }
             }
             .background(
-                KeyboardHandler(currentPage: $currentPage, pageCount: { () -> Int in
-                    if let config = layoutConfig, !filteredApps.isEmpty {
-                        return (filteredApps.count + config.itemsPerPage - 1) / config.itemsPerPage
-                    }
-                    return 0
-                }, isSearchFocused: Binding(
-                    get: { isSearchFocused },
-                    set: { _ in } 
-                ))
+                keyboardHandler
             )
             .onAppear {
                 self.filteredApps = appManager.apps
                 setupWindow()
                 setupDragSessionManager()
                 updateLayoutConfig(geometry: geometry, totalApps: self.filteredApps.count)
+                
+                DispatchQueue.main.async {
+                    self.isInitialLoad = false
+                }
             }
             .onChange(of: geometry.size) {
                 updateLayoutConfig(geometry: geometry, totalApps: filteredApps.count)
@@ -99,6 +98,31 @@ struct ContentView: View {
     }
     
     // MARK: - Subviews
+    
+    private var keyboardHandler: some View {
+        KeyboardHandler(
+            onGoToPrevious: {
+                if currentPage > 0 {
+                    self.pageTransitionDirection = .trailing
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        currentPage -= 1
+                    }
+                }
+            },
+            onGoToNext: {
+                if let config = layoutConfig, !filteredApps.isEmpty {
+                    let pageCount = (filteredApps.count + config.itemsPerPage - 1) / config.itemsPerPage
+                    if currentPage < pageCount - 1 {
+                        self.pageTransitionDirection = .leading
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            currentPage += 1
+                        }
+                    }
+                }
+            },
+            isSearchFocused: isSearchFocused
+        )
+    }
     
     private var searchAndInfoView: some View {
         HStack {
@@ -183,8 +207,10 @@ struct ContentView: View {
         }
         .padding(.horizontal, 40)
         .padding(.vertical, 20)
-        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-        .animation(.easeInOut(duration: 0.2), value: currentPage)
+        .transition(isInitialLoad ? .identity : .asymmetric(
+            insertion: .move(edge: self.pageTransitionDirection == .leading ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: self.pageTransitionDirection).combined(with: .opacity)
+        ))
     }
     
     private var dragTipView: some View {
@@ -203,7 +229,14 @@ struct ContentView: View {
         HStack {
             Spacer()
             HStack {
-                Button(action: { if currentPage > 0 { withAnimation(.easeInOut(duration: 0.3)) { currentPage -= 1 } } }) {
+                Button(action: {
+                    if currentPage > 0 {
+                        self.pageTransitionDirection = .trailing
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            currentPage -= 1
+                        }
+                    }
+                }) {
                     Image(systemName: "chevron.left").foregroundColor(currentPage == 0 ? .gray : .white)
                 }
                 .disabled(currentPage == 0)
@@ -215,7 +248,14 @@ struct ContentView: View {
                 Text("\(currentPage + 1) из \(pageCount)")
                     .font(.body).foregroundColor(.white.opacity(0.8))
                 
-                Button(action: { if currentPage < pageCount - 1 { withAnimation(.easeInOut(duration: 0.3)) { currentPage += 1 } } }) {
+                Button(action: {
+                    if currentPage < pageCount - 1 {
+                        self.pageTransitionDirection = .leading
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            currentPage += 1
+                        }
+                    }
+                }) {
                     Image(systemName: "chevron.right").foregroundColor(currentPage >= pageCount - 1 ? .gray : .white)
                 }
                 .disabled(currentPage >= pageCount - 1)
@@ -416,20 +456,17 @@ struct ContentView: View {
 // MARK: - Supporting Views & Delegates
 
 struct KeyboardHandler: NSViewRepresentable {
-    @Binding var currentPage: Int
-    let pageCount: () -> Int
-    @Binding var isSearchFocused: Bool
+    let onGoToPrevious: () -> Void
+    let onGoToNext: () -> Void
+    var isSearchFocused: Bool
     
     func makeNSView(context: Context) -> NSView {
         let view = KeyboardEventView()
         view.onKeyDown = { event in
             guard !isSearchFocused else { return }
-            let totalPages = pageCount()
-            guard totalPages > 1 else { return }
-            
             switch event.keyCode {
-            case 123: if currentPage > 0 { withAnimation(.easeInOut(duration: 0.2)) { currentPage -= 1 } }
-            case 124: if currentPage < totalPages - 1 { withAnimation(.easeInOut(duration: 0.2)) { currentPage += 1 } }
+            case 123: onGoToPrevious()
+            case 124: onGoToNext()
             default: break
             }
         }
