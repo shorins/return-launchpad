@@ -80,10 +80,6 @@ struct ContentView: View {
                 setupWindow()
                 setupDragSessionManager()
                 updateLayoutConfig(geometry: geometry, totalApps: self.filteredApps.count)
-                
-                DispatchQueue.main.async {
-                    self.isInitialLoad = false
-                }
             }
             .onChange(of: geometry.size) {
                 updateLayoutConfig(geometry: geometry, totalApps: filteredApps.count)
@@ -211,6 +207,11 @@ struct ContentView: View {
             insertion: .move(edge: self.pageTransitionDirection == .leading ? .trailing : .leading).combined(with: .opacity),
             removal: .move(edge: self.pageTransitionDirection).combined(with: .opacity)
         ))
+        .onAppear {
+            if isInitialLoad {
+                isInitialLoad = false
+            }
+        }
     }
     
     private var dragTipView: some View {
@@ -555,3 +556,4 @@ struct CrossPageNavigationDelegate: DropDelegate {
         return false
     }
 }
+
