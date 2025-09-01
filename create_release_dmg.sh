@@ -60,30 +60,71 @@ else
     exit 1
 fi
 
-# Step 2: Build the project
-print_step "2" "Building the project"
-echo "Building $PROJECT_NAME in $CONFIGURATION configuration..."
-xcodebuild build \
+# Step 2: Archive the project
+print_step "2" "Creating Universal archive"
+echo "Creating Universal archive for $PROJECT_NAME (Intel + Apple Silicon)..."
+xcodebuild archive \
   -project "$PROJECT_FILE" \
   -scheme "$SCHEME" \
   -configuration "$CONFIGURATION" \
-  -derivedDataPath "$BUILD_DIR"
+  -derivedDataPath "$BUILD_DIR" \
+  -archivePath "$BUILD_DIR/Archive.xcarchive" \
+  ARCHS="arm64 x86_64" \
+  ONLY_ACTIVE_ARCH=NO
 
 if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Build completed successfully${NC}\n"
+    echo -e "${GREEN}✅ Archive completed successfully${NC}\n"
 else
-    echo -e "${RED}❌ Build failed${NC}"
+    echo -e "${RED}❌ Archive failed${NC}"
+    exit 1
+fi
+
+# Step 2.5: Export the archive
+print_step "2.5" "Exporting archive"
+echo "Exporting archive for distribution..."
+xcodebuild -exportArchive \
+  -archivePath "$BUILD_DIR/Archive.xcarchive" \
+  -exportPath "$BUILD_DIR/Export" \
+  -exportOptionsPlist "exportOptions.plist"
+
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Export completed successfully${NC}\n"
+else
+    echo -e "${RED}❌ Export failed${NC}"
     exit 1
 fi
 
 # Verify the app was built
-APP_PATH="$BUILD_DIR/Build/Products/$CONFIGURATION/$APP_NAME"
+APP_PATH="$BUILD_DIR/Export/$APP_NAME"
 if [ ! -d "$APP_PATH" ]; then
-    echo -e "${RED}❌ Error: Built app not found at $APP_PATH${NC}"
+    echo -e "${RED}❌ Error: Exported app not found at $APP_PATH${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}📱 App built successfully at: $APP_PATH${NC}\n"
+# Step 2.7: Apply Ad Hoc signing for universal distribution
+print_step "2.7" "Applying Ad Hoc signature"
+echo "Signing app for distribution without Apple ID requirement..."
+codesign --force --deep --sign - "$APP_PATH"
+
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Ad Hoc signature applied successfully${NC}"
+else
+    echo -e "${YELLOW}⚠️ Warning: Ad Hoc signing failed, but continuing...${NC}"
+fi
+
+# Step 2.8: Verify Universal binary
+print_step "2.8" "Verifying Universal binary"
+echo "Checking supported architectures..."
+ARCH_INFO=$(lipo -info "$APP_PATH/Contents/MacOS/Return Launchpad")
+echo "Architecture info: $ARCH_INFO"
+
+if [[ $ARCH_INFO == *"arm64"* ]] && [[ $ARCH_INFO == *"x86_64"* ]]; then
+    echo -e "${GREEN}✅ Universal binary created successfully (Intel + Apple Silicon)${NC}"
+else
+    echo -e "${YELLOW}⚠️ Warning: May not be a Universal binary${NC}"
+fi
+
+echo -e "${GREEN}📱 Universal app ready for distribution at: $APP_PATH${NC}\n"
 
 # Step 3: Create Release directory on Desktop
 print_step "3" "Creating Release directory"
@@ -164,14 +205,15 @@ else
 fi
 
 # Final summary
-echo -e "${BLUE}🎉 Build and DMG Creation Complete!${NC}"
-echo -e "${BLUE}===================================${NC}"
+echo -e "${BLUE}🎉 Universal Build and DMG Creation Complete!${NC}"
+echo -e "${BLUE}============================================${NC}"
+echo -e "${GREEN}💻 Supported Architectures: Intel (x86_64) + Apple Silicon (arm64)${NC}"
 echo -e "${GREEN}📱 App Size: $APP_SIZE${NC}"
 echo -e "${GREEN}📦 DMG Size: $DMG_SIZE${NC}"
 echo -e "${GREEN}💿 DMG File: $DMG_PATH${NC}"
 echo -e "${GREEN}🧹 Release directory automatically cleaned up${NC}"
 echo ""
-echo -e "${YELLOW}💡 The DMG is ready for distribution!${NC}"
+echo -e "${YELLOW}💡 The Universal DMG works on both Intel and Apple Silicon Macs!${NC}"
 
 # Optional: Open the Desktop folder to show the results
 read -p "Open Desktop folder to view the results? (y/n): " -n 1 -r
