@@ -22,6 +22,8 @@ class AppOrderManager: ObservableObject {
     /// Имя текущего пользователя для создания уникальных ключей
     private let currentUser = NSUserName()
     
+    private var saveWorkItem: DispatchWorkItem?
+    
     /// Ключи для хранения данных с учетом пользователя
     private var customOrderEnabledKey: String { "\(currentUser)_isCustomOrderEnabled" }
     private var userAppOrderKey: String { "\(currentUser)_userAppOrder" }
@@ -51,13 +53,13 @@ class AppOrderManager: ObservableObject {
             logger.logUserDefaultsOperation("SET", key: key, value: value, storage: "primary")
             
             primary.set(value, forKey: key)
-            primary.synchronize()
+            // primary.synchronize()
             
             // Дублируем в fallback для надежности
             if primary !== fallback {
                 logger.logUserDefaultsOperation("SET_FALLBACK", key: key, value: value, storage: "fallback")
                 fallback.set(value, forKey: key)
-                fallback.synchronize()
+                // fallback.synchronize()
             }
             
             logger.log(.info, "✅ Data written to both storages for key: \(key)")
@@ -113,7 +115,7 @@ class AppOrderManager: ObservableObject {
                     print("[PersistenceStrategy] Мигрирован userAppOrder: \(migratedOrder.count) символов")
                 }
                 
-                primary.synchronize()
+                // primary.synchronize()
             }
         }
         
@@ -234,6 +236,19 @@ class AppOrderManager: ObservableObject {
         print("[AppOrderManager] Принудительное сохранение выполнено (стратегия: \(persistenceStrategy.description))")
     }
     
+    /// Сохраняет данные с задержкой, отменяя предыдущие запросы на сохранение
+    func debouncedSave() {
+        saveWorkItem?.cancel() // Отменяем предыдущий запланированный save
+        
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.forceSave()
+        }
+        
+        // Запланировать выполнение через 0.5 секунды
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+        self.saveWorkItem = workItem
+    }
+    
     /// Обработчик завершения приложения
     @objc private func appWillTerminate() {
         print("[AppOrderManager] Приложение завершается, сохраняем данные...")
@@ -260,7 +275,7 @@ class AppOrderManager: ObservableObject {
         print("[AppOrderManager] Включен пользовательский порядок с сохранением \(currentOrder.count) позиций")
         
         // Принудительно сохраняем данные
-        forceSave()
+        debouncedSave()
     }
     
     /// Проверяет, что пользовательская конфигурация правильно загружена
@@ -392,7 +407,7 @@ class AppOrderManager: ObservableObject {
         logger.log(.info, "📍 Final position: \(movedApp.name) moved from \(sourceIndex) to \(safeDestinationIndex) (adjusted from \(destinationIndex))")
         
         // Принудительно сохраняем данные после drag & drop
-        forceSave()
+        debouncedSave()
         
         return reorderedApps
     }
