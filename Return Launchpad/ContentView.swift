@@ -11,6 +11,7 @@ struct ContentView: View {
     @EnvironmentObject var appManager: AppManager
     @State private var searchText: String = ""
     @State private var hoverId: UUID?
+    @State private var selectedAppIndex: Int?
     @State private var currentPage: Int = 0
     @FocusState private var isSearchFocused: Bool
     
@@ -77,6 +78,7 @@ struct ContentView: View {
             )
             .onAppear {
                 self.filteredApps = appManager.apps
+                selectedAppIndex = filteredApps.isEmpty ? nil : 0 // Initialize selected app
                 setupWindow()
                 setupDragSessionManager()
                 updateLayoutConfig(geometry: geometry, totalApps: self.filteredApps.count)
@@ -124,18 +126,41 @@ struct ContentView: View {
         HStack {
             Spacer()
             VStack(spacing: 8) {
-                TextField("Найти приложение...", text: $searchText)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .font(.title2)
-                    .padding()
-                    .background(Color.black.opacity(0.25))
-                    .cornerRadius(12)
-                    .frame(maxWidth: 450)
-                    .focused($isSearchFocused)
-                    .onChange(of: searchText) {
-                        currentPage = 0
-                        updateFilteredApps()
+                CustomTextField(text: $searchText, onArrowKey: { arrowKey in
+                    guard !filteredApps.isEmpty else { return }
+                    var newIndex = selectedAppIndex ?? 0
+                    switch arrowKey {
+                    case .left:
+                        newIndex = max(0, newIndex - 1)
+                    case .right:
+                        newIndex = min(filteredApps.count - 1, newIndex + 1)
+                    default:
+                        break // Up/Down arrows are not handled for icon navigation
                     }
+                    selectedAppIndex = newIndex
+                }, onEnterKey: {
+                    if let index = selectedAppIndex, index < filteredApps.count {
+                        let appToLaunch = filteredApps[index]
+                        NSWorkspace.shared.open(appToLaunch.url)
+                        NSApplication.shared.terminate(nil)
+                    }
+                }, onFocusChange: {
+                    focused in
+                    isSearchFocused = focused
+                })
+                .padding() // Add padding inside the background/border
+                .background(Color.black.opacity(0.25)) // Existing background
+                .cornerRadius(12) // Existing corner radius
+                .overlay( // Add the border
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.3), lineWidth: 1) // Subtle white border
+                )
+                .frame(maxWidth: 450) // Keep the frame from the original TextField
+                .onChange(of: searchText) {
+                    currentPage = 0
+                    updateFilteredApps()
+                    selectedAppIndex = filteredApps.isEmpty ? nil : 0 // Reset selection on search change
+                }
                 
                 if appManager.isCustomOrderEnabled || appManager.hasNewApps {
                     infoIndicatorsView
@@ -327,10 +352,18 @@ struct ContentView: View {
         .matchedGeometryEffect(id: app.id, in: namespace)
         .frame(width: 120, height: 120)
         .padding(10)
-        .background(hoverId == app.id ? Color.white.opacity(0.2) : Color.clear)
+        .background(
+            (hoverId == app.id || (selectedAppIndex != nil && filteredApps.indices.contains(selectedAppIndex!) && filteredApps[selectedAppIndex!].id == app.id))
+                ? Color.white.opacity(0.2)
+                : Color.clear
+        )
         .overlay(RoundedRectangle(cornerRadius: 15).stroke(isInDragMode ? Color.blue.opacity(0.5) : Color.clear, lineWidth: 2))
         .cornerRadius(15)
-        .scaleEffect(hoverId == app.id ? 1.05 : 1.0)
+        .scaleEffect(
+            (hoverId == app.id || (selectedAppIndex != nil && filteredApps.indices.contains(selectedAppIndex!) && filteredApps[selectedAppIndex!].id == app.id))
+                ? 1.05
+                : 1.0
+        )
         .rotationEffect(.degrees(draggedItem?.id == app.id ? 5 : 0))
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: draggedItem?.id)
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: hoverId)
@@ -475,10 +508,7 @@ struct KeyboardHandler: NSViewRepresentable {
     }
     
     func updateNSView(_ nsView: KeyboardEventView, context: Context) {
-        // Если поле поиска не в фокусе, наш обработчик должен быть первым ответчиком
-        if !isSearchFocused && nsView.window?.firstResponder != nsView {
-            nsView.window?.makeFirstResponder(nsView)
-        }
+        // No update needed here, CustomTextField manages its own focus.
     }
 }
 
