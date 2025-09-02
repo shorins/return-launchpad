@@ -8,7 +8,7 @@
   [![macOS](https://img.shields.io/badge/macOS-15.5+-blue.svg)](https://www.apple.com/macos/)
   [![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org/)
   [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-  [![Version](https://img.shields.io/badge/version-v1.0-blue.svg)](https://github.com/shorins/return-launchpad/tree/main/release-versions)
+  [![Version](https://img.shields.io/badge/version-v2.0-blue.svg)](https://github.com/shorins/return-launchpad/tree/main/release-versions)
 
   [Download Latest Release](https://github.com/shorins/return-launchpad/tree/main/release-versions) • [Report Bug](https://github.com/shorins/return-launchpad/issues) • [Request Feature](https://github.com/shorins/return-launchpad/issues)
 </div>
@@ -25,6 +25,23 @@ Apple removed the traditional Launchpad from macOS Tahoe, disrupting user workfl
 - **⌨️ Keyboard Navigation**: Arrow keys for efficient browsing
 - **🎨 Native Integration**: Uses macOS blur effects and system animations
 - **🔒 Privacy-First**: Completely offline, no data collection
+
+## 📝 Release Notes
+
+For detailed information about the latest updates and improvements, check out our [Release Notes](UPDATES.md). 
+
+You can download the latest version and previous releases from our [release-versions folder](https://github.com/shorins/return-launchpad/tree/main/release-versions).
+
+**Latest Release (v2) Highlights:**
+- Added ESC key support to close the application
+- Added arrow key navigation and Enter support in search
+- Added smooth icon movement animation during search
+- Added page flipping animation
+- Improved page switching performance
+- Optimized search: filtered list is cached and recalculated only on changes
+- Minor optimizations and bug fixes
+- Fixed control returning to arrow navigation after canceling search
+- Added universal x86 build with Intel macOS support
 
 ## ✨ Features
 
@@ -136,7 +153,7 @@ Return Launchpad follows a clean **MVVM (Model-View-ViewModel)** architecture us
 
 ### Architecture Overview
 
-```mermaid
+```
 graph TB
     A[Return_LaunchpadApp] --> B[AppManager]
     B --> C[AppInfo]
