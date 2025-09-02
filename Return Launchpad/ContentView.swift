@@ -74,7 +74,31 @@ struct ContentView: View {
                 }
             }
             .background(
-                keyboardHandler
+                KeyboardHandler(
+                    onGoToPrevious: {
+                        if currentPage > 0 {
+                            self.pageTransitionDirection = .trailing
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                currentPage -= 1
+                            }
+                        }
+                    },
+                    onGoToNext: {
+                        if let config = layoutConfig, !filteredApps.isEmpty {
+                            let pageCount = (filteredApps.count + config.itemsPerPage - 1) / config.itemsPerPage
+                            if currentPage < pageCount - 1 {
+                                self.pageTransitionDirection = .leading
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                    currentPage += 1
+                                }
+                            }
+                        }
+                    },
+                    onEscape: { // New handler for Escape key
+                        NSApplication.shared.terminate(nil)
+                    },
+                    isSearchFocused: isSearchFocused
+                )
             )
             .onAppear {
                 self.filteredApps = appManager.apps
@@ -118,6 +142,7 @@ struct ContentView: View {
                     }
                 }
             },
+            onEscape: { /* No action here, handled by the global KeyboardHandler in body */ },
             isSearchFocused: isSearchFocused
         )
     }
@@ -492,6 +517,7 @@ struct ContentView: View {
 struct KeyboardHandler: NSViewRepresentable {
     let onGoToPrevious: () -> Void
     let onGoToNext: () -> Void
+    let onEscape: () -> Void // New closure for Escape key
     var isSearchFocused: Bool
     
     func makeNSView(context: Context) -> KeyboardEventView {
@@ -501,6 +527,7 @@ struct KeyboardHandler: NSViewRepresentable {
             switch event.keyCode {
             case 123: onGoToPrevious()
             case 124: onGoToNext()
+            case 53: onEscape() // Handle Escape key (keyCode 53)
             default: break
             }
         }
