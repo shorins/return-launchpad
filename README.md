@@ -13,6 +13,10 @@
   [Download Latest Release](https://github.com/shorins/return-launchpad/tree/main/release-versions) • [Report Bug](https://github.com/shorins/return-launchpad/issues) • [Request Feature](https://github.com/shorins/return-launchpad/issues)
 </div>
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=shorins/return-launchpad&type=Date)](https://www.star-history.com/#shorins/return-launchpad&Date)
+
 ## 🎯 Overview
 
 Apple removed the traditional Launchpad from macOS Tahoe, disrupting user workflows that relied on the full-screen grid interface for launching applications. **Return Launchpad** brings back this beloved feature with modern enhancements, providing a familiar yet improved app launcher experience.
