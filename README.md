@@ -6,7 +6,7 @@
 
 A native, full-screen app launcher for everyone who misses Launchpad.
 
-[![Download](https://img.shields.io/github/v/release/shorins/return-launchpad?style=for-the-badge&label=Download&color=8b5cf6)](https://github.com/shorins/return-launchpad/releases/latest)
+[![Download](https://img.shields.io/badge/Download-universal_DMG-8b5cf6?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/shorins/return-launchpad/releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-15.5%2B-18181b?style=for-the-badge&logo=apple)](https://github.com/shorins/return-launchpad/releases/latest)
 [![License](https://img.shields.io/badge/License-MIT-18181b?style=for-the-badge)](LICENSE)
 
