@@ -1,0 +1,101 @@
+name: macOS build and release
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      run_ui_tests:
+        description: Run desktop UI tests (optional)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: macos-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+jobs:
+  test-and-package:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Unit and integration tests
+        run: ./scripts/test.sh
+      - name: UI tests (manual opt-in)
+        if: github.event_name == 'workflow_dispatch' && inputs.run_ui_tests
+        run: ./scripts/test.sh --ui
+      - name: Universal app and DMG
+        run: ./create_release_dmg.sh
+      - name: Check release version and notes
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Expected vX.Y.Z'; exit 1; }
+          app='build/ReleaseBuild/Build/Products/Release/Return Launchpad.app'
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
+          [[ "$RELEASE_TAG" == "v$version" ]] || { echo 'Tag and app version differ'; exit 1; }
+          test -s "docs/releases/$RELEASE_TAG.md"
+      - name: Preserve test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: test-results
+          path: build/TestResults/*.xcresult
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve build logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: build-logs
+          path: build/releases/**/build.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Preserve installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: Return-Launchpad-universal
+          path: |
+            build/releases/**/*.dmg
+            build/releases/**/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'shorins/return-launchpad'
+    needs: test-and-package
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: Return-Launchpad-universal
+          path: release-assets
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' assets < <(find release-assets -type f \( -name '*.dmg' -o -name '*.sha256' \) -print0)
+          [[ ${#assets[@]} -eq 2 ]] || { echo 'Expected one DMG and one checksum'; exit 1; }
+          checksum=$(find release-assets -name '*.sha256' -print -quit)
+          (cd "$(dirname "$checksum")" && shasum -a 256 -c "$(basename "$checksum")")
+          gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag \
+            --title "Return Launchpad $RELEASE_TAG" \
+            --notes-file "docs/releases/$RELEASE_TAG.md" --latest

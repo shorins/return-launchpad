@@ -1,0 +1,29 @@
+name: Bug report / Ошибка
+description: Report something that does not work as expected.
+labels: []
+body:
+  - type: input
+    id: environment
+    attributes:
+      label: App version, macOS version, and Mac chip
+      placeholder: 3.6.5, macOS 26, Apple M2 / Intel
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / Как повторить
+      description: What did you do, and what happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / Что ожидалось
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots or recording / Скриншоты или запись
+      description: Optional. Remove personal information before uploading.

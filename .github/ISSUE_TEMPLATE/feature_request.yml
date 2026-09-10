@@ -1,0 +1,15 @@
+name: Feature request / Идея
+description: Suggest an improvement to Return Launchpad.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would this help you do? / Какую задачу это решит?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested behavior / Как это должно работать?
+    validations:
+      required: true

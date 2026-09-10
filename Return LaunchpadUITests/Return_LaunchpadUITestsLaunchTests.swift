@@ -1,33 +1,24 @@
-//
-//  Return_LaunchpadUITestsLaunchTests.swift
-//  Return LaunchpadUITests
-//
-//  Created by Сергей Шорин on 22.08.2025.
-//
-
 import XCTest
 
+@MainActor
 final class Return_LaunchpadUITestsLaunchTests: XCTestCase {
-
-    override class var runsForEachTargetApplicationUIConfiguration: Bool {
-        true
-    }
-
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
-    @MainActor
-    func testLaunch() throws {
+    func testLaunchScreenshot() {
         let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--test-run", UUID().uuidString]
         app.launch()
-
-        // Insert steps here to perform after app launch but before taking a screenshot,
-        // such as logging into a test account or navigating somewhere in the app
-
+        app.activate()
+        XCTAssertTrue(app.textFields["app-search"].waitForExistence(timeout: 5))
         let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "Launch Screen"
+        attachment.name = "Launchpad — isolated test catalog"
         attachment.lifetime = .keepAlways
         add(attachment)
+        app.terminate()
+    }
+    func testLaunchPerformance() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--test-run", UUID().uuidString]
+        let options = XCTMeasureOptions(); options.iterationCount = 3
+        measure(metrics: [XCTApplicationLaunchMetric()], options: options) { app.launch() }
+        app.terminate()
     }
 }

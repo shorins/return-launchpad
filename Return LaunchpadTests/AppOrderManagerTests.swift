@@ -1,257 +1,152 @@
-//
-//  AppOrderManagerTests.swift
-//  Return LaunchpadTests
-//
-//  Created for professional testing of persistence functionality
-//
-
 import XCTest
 @testable import Return_Launchpad
 
-class AppOrderManagerTests: XCTestCase {
-    
-    var appOrderManager: AppOrderManager!
-    var testApps: [AppInfo]!
-    
+final class LayoutDocumentTests: XCTestCase {
+    private func document(_ ids: [String] = ["a", "b", "c", "d"]) -> LayoutDocument {
+        var result = LayoutDocument(); result.rootItems = ids; return result
+    }
+    func testMoveRightUsesAnchorAfterRemoval() {
+        var layout = document()
+        XCTAssertTrue(layout.move("a", to: .root, before: "c"))
+        XCTAssertEqual(layout.rootItems, ["b", "a", "c", "d"])
+        XCTAssertTrue(layout.move("a", to: .root, before: nil))
+        XCTAssertEqual(layout.rootItems, ["b", "c", "d", "a"])
+    }
+    func testMoveLeftAndNoOp() {
+        var layout = document()
+        XCTAssertTrue(layout.move("d", to: .root, before: "a"))
+        XCTAssertEqual(layout.rootItems, ["d", "a", "b", "c"])
+        let before = layout
+        XCTAssertFalse(layout.move("d", to: .root, before: "d"))
+        XCTAssertEqual(layout, before)
+        XCTAssertFalse(layout.move("missing", to: .root, before: nil))
+    }
+    func testFolderCreationAndExtractionAreAtomic() throws {
+        var layout = document()
+        let id = try XCTUnwrap(layout.createFolder(source: "a", target: "c"))
+        XCTAssertEqual(layout.rootItems, ["b", id, "d"])
+        XCTAssertEqual(layout.folder(id)?.appIDs, ["c", "a"])
+        XCTAssertTrue(layout.isValid)
+        layout.move("d", to: .folder(id), before: "a")
+        XCTAssertEqual(layout.folder(id)?.appIDs, ["c", "d", "a"])
+        layout.move("c", to: .root, before: "b")
+        XCTAssertEqual(layout.rootItems, ["c", "b", id])
+        XCTAssertTrue(layout.isValid)
+    }
+    func testLastChildRemovesEmptyFolderButSingleChildRemains() throws {
+        var layout = document(["a", "b"])
+        let id = try XCTUnwrap(layout.createFolder(source: "a", target: "b"))
+        layout.move("a", to: .root, before: nil)
+        XCTAssertEqual(layout.folder(id)?.appIDs, ["b"])
+        layout.move("b", to: .root, before: nil)
+        XCTAssertTrue(layout.folders.isEmpty)
+        XCTAssertEqual(layout.rootItems, ["a", "b"])
+        XCTAssertTrue(layout.isValid)
+    }
+    func testFolderCannotBeNested() throws {
+        var layout = document()
+        let first = try XCTUnwrap(layout.createFolder(source: "a", target: "b"))
+        let second = try XCTUnwrap(layout.createFolder(source: "c", target: "d"))
+        let original = layout
+        XCTAssertFalse(layout.move(first, to: .folder(second), before: nil))
+        XCTAssertEqual(layout, original)
+    }
+    func testRenameAndDissolvePreserveOrder() throws {
+        var layout = document()
+        let id = try XCTUnwrap(layout.createFolder(source: "a", target: "b"))
+        layout.renameFolder(id, name: "  Работа  ")
+        XCTAssertEqual(layout.folder(id)?.name, "Работа")
+        layout.renameFolder(id, name: "  ")
+        XCTAssertEqual(layout.folder(id)?.name, "Работа")
+        layout.dissolveFolder(id)
+        XCTAssertEqual(layout.rootItems, ["b", "a", "c", "d"])
+        XCTAssertTrue(layout.isValid)
+    }
+    func testDragPreviewDoesNotModifyOriginalAndUsesIDsAcrossPages() {
+        let original = document((0..<100).map { "app.\($0)" })
+        var drag = DragSessionManager(itemID: "app.2", document: original)
+        drag.previewMove(to: .root, before: "app.80")
+        XCTAssertEqual(drag.original, original)
+        XCTAssertEqual(drag.preview.rootItems[79], "app.2")
+        drag.previewMove(to: .root, before: "app.1")
+        XCTAssertEqual(drag.preview.rootItems[1], "app.2")
+        XCTAssertEqual(Set(drag.preview.allAppIDs).count, 100)
+        XCTAssertTrue(drag.preview.isValid)
+    }
+    func testFolderPreviewCanBeDiscarded() {
+        let original = document()
+        var drag = DragSessionManager(itemID: "a", document: original)
+        drag.previewFolder(on: "b")
+        XCTAssertEqual(drag.original, original)
+        XCTAssertEqual(drag.preview.folders.count, 1)
+        XCTAssertTrue(drag.preview.isValid)
+    }
+    func testInvalidAnchorDoesNotLoseSource() {
+        var layout = document()
+        let original = layout
+        XCTAssertFalse(layout.move("a", to: .root, before: "missing"))
+        XCTAssertEqual(layout, original)
+    }
+    func testCatalogReconcilePreservesUnavailableAppsAndFolderMembership() throws {
+        var layout = document(["a", "b"])
+        let folder = try XCTUnwrap(layout.createFolder(source: "a", target: "b"))
+        layout.reconcile([AppInfo(name: "C", url: URL(fileURLWithPath: "/C.app"), bundleIdentifier: "c")])
+        XCTAssertEqual(layout.rootItems, [folder, "c"])
+        XCTAssertEqual(layout.folder(folder)?.appIDs, ["b", "a"])
+        XCTAssertTrue(layout.isValid)
+    }
+    func testValidationRejectsDuplicatesAndUnsupportedVersion() {
+        var layout = document(["a", "a"])
+        XCTAssertFalse(layout.isValid)
+        layout = document(); layout.schemaVersion = 999
+        XCTAssertFalse(layout.isValid)
+    }
+    func testRepeatedMovesPreserveEveryItem() {
+        var layout = document((0..<100).map { "app.\($0)" })
+        for index in 0..<500 {
+            layout.move("app.\(index % 100)", to: .root, before: "app.\((index * 17 + 3) % 100)")
+            XCTAssertTrue(layout.isValid)
+            XCTAssertEqual(Set(layout.allAppIDs).count, 100)
+        }
+    }
+}
+
+final class LayoutPersistenceTests: XCTestCase {
+    var directory: URL!
     override func setUpWithError() throws {
-        try super.setUpWithError()
-        
-        // Create test instance
-        appOrderManager = AppOrderManager()
-        
-        // Create mock apps for testing
-        testApps = createMockApps()
-        
-        // Clear any existing test data
-        clearTestData()
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
-    
-    override func tearDownWithError() throws {
-        // Clean up test data
-        clearTestData()
-        appOrderManager = nil
-        testApps = nil
-        try super.tearDownWithError()
+    override func tearDownWithError() throws { try FileManager.default.removeItem(at: directory) }
+    func testAtomicRoundTripAndOrderedWrites() throws {
+        let storage = LayoutPersistence(fileURL: directory.appendingPathComponent("layout.json"))
+        var layout = LayoutDocument(); layout.rootItems = ["a", "b", "c"]
+        storage.save(layout)
+        layout.createFolder(source: "a", target: "b")
+        storage.save(layout)
+        storage.flush()
+        XCTAssertEqual(try storage.load(), layout)
     }
-    
-    // MARK: - Helper Methods
-    
-    func createMockApps() -> [AppInfo] {
-        let mockApps = [
-            AppInfo(name: "App A", icon: NSImage(), url: URL(fileURLWithPath: "/Applications/AppA.app"), bundleIdentifier: "com.test.appa"),
-            AppInfo(name: "App B", icon: NSImage(), url: URL(fileURLWithPath: "/Applications/AppB.app"), bundleIdentifier: "com.test.appb"),
-            AppInfo(name: "App C", icon: NSImage(), url: URL(fileURLWithPath: "/Applications/AppC.app"), bundleIdentifier: "com.test.appc"),
-            AppInfo(name: "App D", icon: NSImage(), url: URL(fileURLWithPath: "/Applications/AppD.app"), bundleIdentifier: "com.test.appd"),
-            AppInfo(name: "App E", icon: NSImage(), url: URL(fileURLWithPath: "/Applications/AppE.app"), bundleIdentifier: "com.test.appe")
-        ]
-        return mockApps
+    func testMigrationUsesIsolatedDefaultsAndKeepsOriginal() throws {
+        let suite = "ReturnLaunchpadTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "\(NSUserName())_userAppOrder"
+        defaults.set(true, forKey: "\(NSUserName())_isCustomOrderEnabled")
+        defaults.set("[\"c\",\"a\",\"a\",\"b\"]", forKey: key)
+        let file = directory.appendingPathComponent("layout.json")
+        let storage = LayoutPersistence(fileURL: file)
+        let result = try storage.load(legacyDefaults: [defaults])
+        XCTAssertEqual(result.rootItems, ["c", "a", "b"])
+        XCTAssertTrue(result.isCustomized)
+        XCTAssertNotNil(defaults.string(forKey: key))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.appendingPathExtension("legacy-backup").path))
     }
-    
-    func clearTestData() {
-        let testUser = NSUserName()
-        let keys = [
-            "\(testUser)_isCustomOrderEnabled",
-            "\(testUser)_userAppOrder"
-        ]
-        
-        // Clear from both standard and app group UserDefaults
-        for key in keys {
-            UserDefaults.standard.removeObject(forKey: key)
-            UserDefaults(suiteName: "group.shorins.return-launchpad")?.removeObject(forKey: key)
-        }
-        
-        UserDefaults.standard.synchronize()
-        UserDefaults(suiteName: "group.shorins.return-launchpad")?.synchronize()
-    }
-    
-    // MARK: - Initialization Tests
-    
-    func testInitialState() {
-        // Test that new AppOrderManager starts in alphabetical mode
-        XCTAssertFalse(appOrderManager.isCustomOrderEnabled, "Should start in alphabetical mode")
-        
-        let verification = appOrderManager.verifyInitialization()
-        XCTAssertFalse(verification.customOrderEnabled, "Custom order should be disabled initially")
-        XCTAssertEqual(verification.savedItemsCount, 0, "Should have no saved items initially")
-    }
-    
-    func testAlphabeticalSorting() {
-        // Test that apps are sorted alphabetically by default
-        let unsortedApps = [testApps[2], testApps[0], testApps[4], testApps[1], testApps[3]] // C, A, E, B, D
-        let sortedApps = appOrderManager.sortApps(unsortedApps)
-        
-        let expectedOrder = ["App A", "App B", "App C", "App D", "App E"]
-        let actualOrder = sortedApps.map { $0.name }
-        
-        XCTAssertEqual(actualOrder, expectedOrder, "Apps should be sorted alphabetically")
-    }
-    
-    // MARK: - Custom Order Tests
-    
-    func testEnableCustomOrder() {
-        // Test enabling custom order
-        XCTAssertFalse(appOrderManager.isCustomOrderEnabled)
-        
-        appOrderManager.enableCustomOrder()
-        
-        XCTAssertTrue(appOrderManager.isCustomOrderEnabled, "Custom order should be enabled")
-    }
-    
-    func testEnableCustomOrderWithPositions() {
-        // Test enabling custom order with current positions
-        appOrderManager.enableCustomOrderWithCurrentPositions(testApps)
-        
-        XCTAssertTrue(appOrderManager.isCustomOrderEnabled, "Custom order should be enabled")
-        
-        let verification = appOrderManager.verifyInitialization()
-        XCTAssertEqual(verification.savedItemsCount, testApps.count, "Should save all app positions")
-    }
-    
-    // MARK: - Drag & Drop Tests
-    
-    func testMoveAppEnablesCustomOrder() {
-        // Test that moving an app automatically enables custom order
-        XCTAssertFalse(appOrderManager.isCustomOrderEnabled)
-        
-        let reorderedApps = appOrderManager.moveApp(from: 0, to: 2, in: testApps)
-        
-        XCTAssertTrue(appOrderManager.isCustomOrderEnabled, "Moving app should enable custom order")
-        XCTAssertEqual(reorderedApps.count, testApps.count, "Should maintain same number of apps")
-    }
-    
-    func testMoveAppChangesOrder() {
-        // Test that moving an app actually changes the order
-        let originalOrder = testApps.map { $0.name }
-        let reorderedApps = appOrderManager.moveApp(from: 0, to: 2, in: testApps)
-        let newOrder = reorderedApps.map { $0.name }
-        
-        XCTAssertNotEqual(originalOrder, newOrder, "Order should change after moving app")
-        
-        // Verify specific move: App A (index 0) should now be at index 2
-        XCTAssertEqual(reorderedApps[2].name, "App A", "App A should be at index 2 after move")
-    }
-    
-    // MARK: - Persistence Tests
-    
-    func testPersistenceAfterRestart() {
-        // Test that custom order persists after "restart" (new instance)
-        
-        // Set up custom order
-        appOrderManager.enableCustomOrderWithCurrentPositions(testApps)
-        let originalOrder = testApps.map { $0.bundleIdentifier }
-        
-        // Move an app to create custom order
-        _ = appOrderManager.moveApp(from: 0, to: 2, in: testApps)
-        
-        // Force save
-        appOrderManager.forceSave()
-        
-        // Create new instance (simulating app restart)
-        let newAppOrderManager = AppOrderManager()
-        
-        // Check that custom order is restored
-        XCTAssertTrue(newAppOrderManager.isCustomOrderEnabled, "Custom order should persist after restart")
-        
-        let verification = newAppOrderManager.verifyInitialization()
-        XCTAssertTrue(verification.customOrderEnabled, "Custom order should be enabled after restart")
-        XCTAssertGreaterThan(verification.savedItemsCount, 0, "Should have saved items after restart")
-    }
-    
-    func testResetToAlphabetical() {
-        // Test resetting to alphabetical order
-        appOrderManager.enableCustomOrderWithCurrentPositions(testApps)
-        XCTAssertTrue(appOrderManager.isCustomOrderEnabled)
-        
-        appOrderManager.resetToAlphabetical()
-        
-        XCTAssertFalse(appOrderManager.isCustomOrderEnabled, "Should reset to alphabetical mode")
-        
-        let verification = appOrderManager.verifyInitialization()
-        XCTAssertEqual(verification.savedItemsCount, 0, "Should clear saved items")
-    }
-    
-    // MARK: - Data Validation Tests
-    
-    func testDataValidation() {
-        // Test data validation functionality
-        appOrderManager.enableCustomOrderWithCurrentPositions(testApps)
-        
-        let verification = appOrderManager.verifyInitialization()
-        XCTAssertTrue(verification.customOrderEnabled, "Should validate correct data")
-    }
-    
-    // MARK: - Performance Tests
-    
-    func testPerformanceSortLargeNumberOfApps() {
-        // Test performance with large number of apps
-        let largeAppList = Array(repeating: testApps, count: 100).flatMap { $0 }
-        
-        measure {
-            _ = appOrderManager.sortApps(largeAppList)
-        }
-    }
-    
-    func testPerformanceMoveAppWithLargeList() {
-        // Test performance of moving apps with large list
-        let largeAppList = Array(repeating: testApps, count: 100).flatMap { $0 }
-        
-        measure {
-            _ = appOrderManager.moveApp(from: 0, to: 50, in: largeAppList)
-        }
-    }
-    
-    // MARK: - Edge Case Tests
-    
-    func testEmptyAppList() {
-        // Test behavior with empty app list
-        let emptyList: [AppInfo] = []
-        let result = appOrderManager.sortApps(emptyList)
-        
-        XCTAssertEqual(result.count, 0, "Should handle empty list gracefully")
-    }
-    
-    func testSingleApp() {
-        // Test behavior with single app
-        let singleApp = [testApps[0]]
-        let result = appOrderManager.sortApps(singleApp)
-        
-        XCTAssertEqual(result.count, 1, "Should handle single app correctly")
-        XCTAssertEqual(result[0].name, testApps[0].name, "Should maintain app identity")
-    }
-    
-    func testInvalidMoveIndices() {
-        // Test behavior with invalid move indices
-        let result = appOrderManager.moveApp(from: -1, to: 10, in: testApps)
-        
-        // Should handle gracefully and not crash
-        XCTAssertNotNil(result, "Should not crash with invalid indices")
-    }
-    
-    // MARK: - Integration Tests
-    
-    func testCompleteWorkflow() {
-        // Test complete workflow: alphabetical -> custom -> move -> restart -> verify
-        
-        // 1. Start with alphabetical
-        XCTAssertFalse(appOrderManager.isCustomOrderEnabled)
-        
-        // 2. Enable custom order
-        appOrderManager.enableCustomOrderWithCurrentPositions(testApps)
-        XCTAssertTrue(appOrderManager.isCustomOrderEnabled)
-        
-        // 3. Move an app
-        let reorderedApps = appOrderManager.moveApp(from: 0, to: 2, in: testApps)
-        
-        // 4. Force save
-        appOrderManager.forceSave()
-        
-        // 5. Simulate restart
-        let newManager = AppOrderManager()
-        
-        // 6. Verify persistence
-        XCTAssertTrue(newManager.isCustomOrderEnabled, "Custom order should persist through restart")
-        
-        let verification = newManager.verifyInitialization()
-        XCTAssertGreaterThan(verification.savedItemsCount, 0, "Should have saved data after restart")
+    func testCorruptDocumentRemainsUntouched() throws {
+        let file = directory.appendingPathComponent("layout.json")
+        let data = Data("broken".utf8)
+        try data.write(to: file)
+        XCTAssertThrowsError(try LayoutPersistence(fileURL: file).load())
+        XCTAssertEqual(try Data(contentsOf: file), data)
     }
 }

@@ -115,3 +115,8 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Distribute installers through GitHub Releases, never source control.
+*.dmg
+*.dmg.sha256
+*.xcarchive/
