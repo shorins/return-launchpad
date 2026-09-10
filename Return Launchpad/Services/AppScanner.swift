@@ -72,7 +72,7 @@ struct AppScanner: Sendable {
                     result.issues.append("\(url.lastPathComponent): \(error.localizedDescription)")
                     return true
                 }) else {
-                result.issues.append("Не удалось прочитать \(root.path)")
+                result.issues.append(L10n.format("Could not read %@", root.path))
                 continue
             }
             var candidates: [URL] = []

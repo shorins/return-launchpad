@@ -4,12 +4,20 @@ import SwiftUI
 enum MotionStyle: String, CaseIterable, Identifiable {
     case smooth, playful, reduced
     var id: String { rawValue }
-    var title: String { switch self { case .smooth: return "Плавные"; case .playful: return "Пружинные"; case .reduced: return "Минимальные" } }
+    var title: String { switch self { case .smooth: return L10n.text("Smooth"); case .playful: return L10n.text("Springy"); case .reduced: return L10n.text("Minimal") } }
 }
 
 @MainActor
 final class LauncherPreferences: ObservableObject {
     private let defaults: UserDefaults
+    var onLanguageChange: (() -> Void)?
+    @Published var language: AppLanguage {
+        didSet {
+            defaults.set(language.rawValue, forKey: "interfaceLanguage")
+            L10n.setLanguage(language)
+            onLanguageChange?()
+        }
+    }
     @Published var motion: MotionStyle { didSet { defaults.set(motion.rawValue, forKey: "motionStyle") } }
     @Published var iconSize: Double { didSet { defaults.set(iconSize, forKey: "iconSize") } }
     @Published var usePointerScreen: Bool { didSet { defaults.set(usePointerScreen, forKey: "usePointerScreen") } }
@@ -17,11 +25,13 @@ final class LauncherPreferences: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        language = AppLanguage(rawValue: defaults.string(forKey: "interfaceLanguage") ?? "") ?? .system
         motion = MotionStyle(rawValue: defaults.string(forKey: "motionStyle") ?? "") ?? .smooth
         let size = defaults.double(forKey: "iconSize")
         iconSize = size == 0 ? 76 : min(96, max(56, size))
         usePointerScreen = defaults.object(forKey: "usePointerScreen") as? Bool ?? true
         hideOnDeactivate = defaults.object(forKey: "hideOnDeactivate") as? Bool ?? true
+        L10n.setLanguage(language)
     }
     var reduceMotion: Bool { motion == .reduced || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     var animation: Animation { reduceMotion ? .linear(duration: 0.1) : (motion == .playful ? .spring(duration: 0.32, bounce: 0.22) : .smooth(duration: 0.24)) }

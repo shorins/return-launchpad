@@ -120,3 +120,6 @@ Temporary Items
 *.dmg
 *.dmg.sha256
 *.xcarchive/
+
+# Local engineering notes are not part of public documentation.
+/docs/*.ru.md

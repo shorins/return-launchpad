@@ -72,7 +72,7 @@ final class LauncherGridView: NSView {
         pageView.wantsLayer = true
         addSubview(pageView)
         setAccessibilityRole(.group)
-        setAccessibilityLabel("Приложения")
+        setAccessibilityLabel(L10n.text("Apps"))
         emptyTarget.wantsLayer = true
         emptyTarget.layer?.cornerRadius = 18
         emptyTarget.layer?.borderWidth = 1
@@ -85,6 +85,7 @@ final class LauncherGridView: NSView {
 
     func refresh() {
         guard let model, let preferences, bounds.width > 1, bounds.height > 1 else { return }
+        setAccessibilityLabel(L10n.text("Apps"))
         let cellWidth = max(CGFloat(116), CGFloat(preferences.iconSize) + 58)
         let cellHeight = CGFloat(preferences.iconSize) + 62
         let columns = max(1, min(9, Int((bounds.width - 48) / cellWidth)))
@@ -501,28 +502,28 @@ final class LauncherGridView: NSView {
             let item = ClosureMenuItem(title: title, action: action)
             menu.addItem(item)
         }
-        add(model.layout.folder(id) == nil ? "Открыть" : "Открыть папку") { [weak model] in model?.activate(id) }
+        add(model.layout.folder(id) == nil ? L10n.text("Open") : L10n.text("Open folder")) { [weak model] in model?.activate(id) }
         if let folder = model.layout.folder(id) {
-            add("Переименовать…") { [weak model] in
+            add(L10n.text("Rename…")) { [weak model] in
                 guard let model else { return }
                 let alert = NSAlert()
                 alert.window.level = self.window?.level ?? .modalPanel
-                alert.messageText = "Название папки"
-                alert.addButton(withTitle: "Сохранить"); alert.addButton(withTitle: "Отмена")
+                alert.messageText = L10n.text("Folder name")
+                alert.addButton(withTitle: L10n.text("Save")); alert.addButton(withTitle: L10n.text("Cancel"))
                 let field = NSTextField(string: folder.name)
                 field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
                 alert.accessoryView = field
                 alert.window.initialFirstResponder = field
                 if alert.runModal() == .alertFirstButtonReturn { model.renameFolder(id, name: field.stringValue) }
             }
-            add("Расформировать папку") { [weak model] in model?.dissolveFolder(id) }
+            add(L10n.text("Ungroup folder")) { [weak model] in model?.dissolveFolder(id) }
         } else if !model.isSearching {
-            if model.folderID != nil { add("На главный экран") { [weak model] in model?.moveItem(id, to: .root) } }
+            if model.folderID != nil { add(L10n.text("Move to main screen")) { [weak model] in model?.moveItem(id, to: .root) } }
             for folder in model.layout.folders where folder.id != model.folderID {
-                add("В папку «\(folder.name)»") { [weak model] in model?.moveItem(id, to: .folder(folder.id)) }
+                add(L10n.format("Move to “%@”", folder.name)) { [weak model] in model?.moveItem(id, to: .folder(folder.id)) }
             }
             if model.folderID == nil {
-                let create = NSMenuItem(title: "Создать папку с…", action: nil, keyEquivalent: "")
+                let create = NSMenuItem(title: L10n.text("Create folder with…"), action: nil, keyEquivalent: "")
                 let choices = NSMenu()
                 for target in model.layout.rootItems where target != id && model.app(target) != nil {
                     choices.addItem(ClosureMenuItem(title: model.title(target)) { [weak model] in model?.createFolder(id, with: target) })
@@ -532,11 +533,11 @@ final class LauncherGridView: NSView {
             }
         }
         if !model.isSearching {
-            add("В начало") { [weak model] in
+            add(L10n.text("Move to beginning")) { [weak model] in
                 guard let model else { return }
                 model.moveItem(id, to: model.currentContainer, before: model.visibleIDs.first)
             }
-            add("В конец") { [weak model] in guard let model else { return }; model.moveItem(id, to: model.currentContainer) }
+            add(L10n.text("Move to end")) { [weak model] in guard let model else { return }; model.moveItem(id, to: model.currentContainer) }
         }
         return menu
     }
@@ -599,8 +600,8 @@ final class LauncherTile: NSButton {
         displayName = nextName
         subtitle = nextSubtitle
         folder = nextFolder
+        setAccessibilityLabel(displayName + (folder ? L10n.text(", folder") : ""))
         if redraw {
-            setAccessibilityLabel(displayName + (folder ? ", папка" : ""))
             setAccessibilityIdentifier("tile-" + id)
             toolTip = displayName
         }

@@ -2,7 +2,7 @@ import Foundation
 
 enum LayoutPersistenceError: LocalizedError {
     case invalidDocument
-    var errorDescription: String? { "Файл раскладки повреждён или создан более новой версией приложения. Оригинал сохранён." }
+    var errorDescription: String? { L10n.text("The layout file is damaged or was created by a newer app version. The original has been preserved.") }
 }
 
 /// A serial writer preserves commit order. Flush only on actual process termination.

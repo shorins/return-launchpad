@@ -20,7 +20,7 @@ final class FolderDropZoneTests: XCTestCase {
         XCTAssertNotNil(model.beginDrag("test.app.0"))
         button.configureDropZone(active: true, folderName: "Папка", reduceMotion: true)
         XCTAssertTrue(button.dropMode)
-        XCTAssertEqual(button.title, "Перетащите на главный экран")
+        XCTAssertEqual(button.title, L10n.text("Drag to main screen"))
         XCTAssertEqual(button.frame, frame)
         if let bitmap = button.bitmapImageRepForCachingDisplay(in: button.bounds) {
             button.cacheDisplay(in: button.bounds, to: bitmap)
@@ -29,7 +29,7 @@ final class FolderDropZoneTests: XCTestCase {
             print("DROP_ZONE_PREVIEW=\(preview.path)")
         }
         button.beginInternalHover()
-        XCTAssertEqual(button.title, "Отпустите — на главный экран")
+        XCTAssertEqual(button.title, L10n.text("Release to move to main screen"))
         model.cancelDrag()
         button.configureDropZone(active: false, folderName: "Папка", reduceMotion: true)
         XCTAssertFalse(button.dropMode)
@@ -41,7 +41,7 @@ final class FolderDropZoneTests: XCTestCase {
         button.configureDropZone(active: true, folderName: "Папка", reduceMotion: true)
         try await Task.sleep(for: .milliseconds(650))
         XCTAssertEqual(model.folderID, folder)
-        XCTAssertEqual(button.title, "Перетащите на главный экран")
+        XCTAssertEqual(button.title, L10n.text("Drag to main screen"))
         model.cancelDrag()
         model.flush()
     }

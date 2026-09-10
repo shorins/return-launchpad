@@ -16,7 +16,7 @@ final class ApplicationDirectories {
                 var stale = false
                 let url = try URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI], bookmarkDataIsStale: &stale)
                 guard url.startAccessingSecurityScopedResource() else {
-                    issues.append("Снова выберите папку \(url.lastPathComponent), чтобы разрешить чтение.")
+                    issues.append(L10n.format("Select the folder %@ again to allow access.", url.lastPathComponent))
                     refreshed.append(data)
                     continue
                 }
@@ -24,7 +24,7 @@ final class ApplicationDirectories {
                 refreshed.append(stale ? (try url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess])) : data)
             } catch {
                 refreshed.append(data)
-                issues.append("Не удалось восстановить доступ к папке приложений: \(error.localizedDescription)")
+                issues.append(L10n.format("Could not restore access to the app folder: %@", error.localizedDescription))
             }
         }
         defaults.set(refreshed, forKey: key)

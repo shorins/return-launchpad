@@ -65,7 +65,6 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     private var preferences: LauncherPreferences!
     private var launcherWindow: LauncherWindow?
     private var settingsWindow: NSWindow?
-    private var statusItem: NSStatusItem?
     private var keyMonitor: Any?
     private var presentationToken = UUID()
     private var isShowing = false
@@ -82,16 +81,23 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             let index = arguments.firstIndex(of: "--test-run")
             let runID = index.flatMap { arguments.indices.contains($0 + 1) ? UUID(uuidString: arguments[$0 + 1]) : nil } ?? UUID()
             let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("LaunchpadUITest-" + runID.uuidString)
-            model = AppManager(directory: temporary, legacyDefaults: [], testing: true)
             preferences = LauncherPreferences(defaults: UserDefaults(suiteName: "LaunchpadUITest." + UUID().uuidString)!)
+            preferences.language = .russian
+            model = AppManager(directory: temporary, legacyDefaults: [], testing: true)
             // Desktop test tools can briefly activate their runner; keep the fixture visible.
             preferences.hideOnDeactivate = false
         } else {
-            model = AppManager()
             preferences = LauncherPreferences()
+            model = AppManager()
         }
         model.onDismiss = { [weak self] in self?.hideLauncher() }
         model.onSettings = { [weak self] in self?.showSettings() }
+        preferences.onLanguageChange = { [weak self] in
+            guard let self else { return }
+            self.setupMenus()
+            self.settingsWindow?.title = L10n.text("Settings — Return Launchpad")
+            self.model.objectWillChange.send()
+        }
         setupMenus()
         setupWindow()
         installKeyboardHandler()
@@ -180,7 +186,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     func showSettings() {
         if settingsWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 640), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-            window.title = "Настройки — Return Launchpad"
+            window.title = L10n.text("Settings — Return Launchpad")
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.contentView = NSHostingView(rootView: LauncherSettingsView(preferences: preferences, model: model, testing: testing))
@@ -197,38 +203,27 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         let main = NSMenu()
         let appItem = NSMenuItem(); main.addItem(appItem)
         let app = NSMenu(); appItem.submenu = app
-        app.addItem(ClosureMenuItem(title: "О программе Return Launchpad") { NSApp.orderFrontStandardAboutPanel(nil) })
-        let settings = ClosureMenuItem(title: "Настройки…") { [weak self] in self?.showSettings() }
+        app.addItem(ClosureMenuItem(title: L10n.text("About Return Launchpad")) { NSApp.orderFrontStandardAboutPanel(nil) })
+        let settings = ClosureMenuItem(title: L10n.text("Settings…")) { [weak self] in self?.showSettings() }
         settings.keyEquivalent = ","; app.addItem(settings)
         app.addItem(.separator())
-        let hide = ClosureMenuItem(title: "Скрыть Launchpad") { [weak self] in self?.hideLauncher() }
+        let hide = ClosureMenuItem(title: L10n.text("Hide Launchpad")) { [weak self] in self?.hideLauncher() }
         hide.keyEquivalent = "h"; app.addItem(hide)
         app.addItem(.separator())
-        let quit = ClosureMenuItem(title: "Завершить Return Launchpad") { NSApp.terminate(nil) }
+        let quit = ClosureMenuItem(title: L10n.text("Quit Return Launchpad")) { NSApp.terminate(nil) }
         quit.keyEquivalent = "q"; app.addItem(quit)
         let editItem = NSMenuItem(); main.addItem(editItem)
-        let edit = NSMenu(title: "Правка"); editItem.submenu = edit
-        let undo = ClosureMenuItem(title: "Отменить изменение раскладки") { [weak self] in self?.model.undo() }
+        let edit = NSMenu(title: L10n.text("Edit")); editItem.submenu = edit
+        let undo = ClosureMenuItem(title: L10n.text("Undo layout change")) { [weak self] in self?.model.undo() }
         undo.keyEquivalent = "z"; edit.addItem(undo)
-        let redo = ClosureMenuItem(title: "Повторить изменение раскладки") { [weak self] in self?.model.redo() }
+        let redo = ClosureMenuItem(title: L10n.text("Redo layout change")) { [weak self] in self?.model.redo() }
         redo.keyEquivalent = "z"; redo.keyEquivalentModifierMask = [.command, .shift]; edit.addItem(redo)
         edit.addItem(.separator())
-        for (title, selector, key) in [("Вырезать", #selector(NSText.cut(_:)), "x"), ("Копировать", #selector(NSText.copy(_:)), "c"), ("Вставить", #selector(NSText.paste(_:)), "v"), ("Выбрать всё", #selector(NSText.selectAll(_:)), "a")] {
+        for (title, selector, key) in [(L10n.text("Cut"), #selector(NSText.cut(_:)), "x"), (L10n.text("Copy"), #selector(NSText.copy(_:)), "c"), (L10n.text("Paste"), #selector(NSText.paste(_:)), "v"), (L10n.text("Select All"), #selector(NSText.selectAll(_:)), "a")] {
             edit.addItem(withTitle: title, action: selector, keyEquivalent: key)
         }
         NSApp.mainMenu = main
-        let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        status.button?.image = NSImage(systemSymbolName: "square.grid.3x3", accessibilityDescription: "Return Launchpad")
-        status.button?.toolTip = "Return Launchpad"
-        let menu = NSMenu()
-        let show = ClosureMenuItem(title: "Открыть Launchpad") { [weak self] in self?.showLauncher() }
-        if !testing { show.setShortcut(for: .toggleLaunchpad) }
-        menu.addItem(show)
-        menu.addItem(ClosureMenuItem(title: "Настройки…") { [weak self] in self?.showSettings() })
-        menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem(title: "Завершить") { NSApp.terminate(nil) })
-        status.menu = menu
-        statusItem = status
+
     }
     private func installKeyboardHandler() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in

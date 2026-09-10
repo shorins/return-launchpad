@@ -77,7 +77,7 @@ struct LayoutDocument: Codable, Equatable, Sendable {
     }
 
     @discardableResult
-    mutating func createFolder(source: String, target: String, name: String = "Новая папка") -> String? {
+    mutating func createFolder(source: String, target: String, name: String = L10n.text("New folder")) -> String? {
         guard source != target, folder(source) == nil, folder(target) == nil,
               rootItems.contains(target), allAppIDs.contains(source) else { return nil }
         removeReference(source)

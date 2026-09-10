@@ -4,7 +4,9 @@ Install: drag Return Launchpad.app into Applications and open it.
 Show / hide: Control + Option + Space (customizable in Settings).
 Settings: Command + comma. Quit: Command + Q.
 Requires macOS 15.5+. Universal Apple Silicon + Intel build.
-The current application interface is Russian.
+Language: System, Русский or English in Settings. System uses Russian for a
+Russian system language, English otherwise. Reopen from the Dock or shortcut;
+there is no menu bar status icon.
 
 This build is ad-hoc signed, not notarized by Apple. If macOS blocks the first
 launch and you trust the download, try opening it, then use System Settings >

@@ -32,7 +32,7 @@ final class FolderBackNativeButton: NSButton {
     private var reduceMotion = false
     init() {
         super.init(frame: .zero)
-        image = NSImage(systemSymbolName: "arrow.left", accessibilityDescription: "Все приложения")
+        image = NSImage(systemSymbolName: "arrow.left", accessibilityDescription: L10n.text("All apps"))
         imagePosition = .imageOnly
         isBordered = false
         wantsLayer = true
@@ -40,9 +40,9 @@ final class FolderBackNativeButton: NSButton {
         font = .systemFont(ofSize: 13, weight: .medium)
         target = self
         action = #selector(goBack)
-        toolTip = "Все приложения. Перетащите сюда иконку, чтобы вынести её из папки."
+        toolTip = L10n.text("All apps. Drag an app here to move it out of the folder.")
         setAccessibilityIdentifier("folder-back")
-        setAccessibilityLabel("Все приложения")
+        setAccessibilityLabel(L10n.text("All apps"))
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func draw(_ dirtyRect: NSRect) {
@@ -79,10 +79,10 @@ final class FolderBackNativeButton: NSButton {
         if changed || !active { updateAppearance() }
     }
     private func updateAppearance() {
-        title = dropMode ? (highlightedDrop ? "Отпустите — на главный экран" : "Перетащите на главный экран") : folderName
+        title = dropMode ? (highlightedDrop ? L10n.text("Release to move to main screen") : L10n.text("Drag to main screen")) : folderName
         imagePosition = .imageLeading
         contentTintColor = .white
-        setAccessibilityLabel(dropMode ? title : "Все приложения")
+        setAccessibilityLabel(dropMode ? title : L10n.text("All apps"))
         needsDisplay = true
         let old = layer?.presentation()?.backgroundColor ?? layer?.backgroundColor
         let color = dropMode ? NSColor.controlAccentColor.withAlphaComponent(highlightedDrop ? 0.42 : 0.18).cgColor : NSColor.clear.cgColor

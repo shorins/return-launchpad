@@ -70,11 +70,10 @@ git push origin vX.Y.Z
 
 Layout and catalog data live in Application Support inside the app container. Cached icons live in Caches. Folders are virtual: app bundles never move. The old layout is migrated with a backup; corrupt documents are not overwritten.
 
-## Engineering notes
+## App icon
 
-- [Implementation and validation (Russian)](implementation-and-validation.ru.md)
-- [Motion research (Russian)](animation-research.ru.md)
-- [Drag performance measurements (Russian)](drag-performance-3.5.ru.md)
-- [Memory audit and its limitations (Russian)](memory-audit.ru.md)
+The violet grid uses a standard macOS AppIcon asset catalog, covering 16–1024 px. Regenerate the vector artwork with `swift scripts/generate-app-icon.swift`. Xcode compiles it into the app icon resources.
 
-Historical v1/v2 notes and old installer binaries are preserved in Git history; current installers live in GitHub Releases.
+## Localization
+
+English and Russian strings live in `en.lproj` and `ru.lproj`. `L10n` selects the resource bundle for SwiftUI and AppKit. The System option uses the primary system language: Russian for `ru`, English otherwise. Explicit choices persist in preferences. System dialogs and third-party shortcut recording alerts may follow macOS’s language.

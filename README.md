@@ -43,13 +43,13 @@ Native **SwiftUI + AppKit**. Universal **Apple Silicon + Intel** build. Respects
 
 ### Set it up once. Make it feel right.
 
-<p align="center"><img src="docs/images/settings.jpg" alt="Settings for the shortcut, display, motion, icon size and launch at login" width="440"></p>
+<p align="center"><img src="docs/images/settings-en.jpg" alt="Settings for the shortcut, display, motion, icon size and launch at login" width="440"></p>
 
-Screenshots show the real application. **The current app interface is in Russian**; app names retain their original language. English localization is a welcome contribution. The shortcut and login setting pictured above are customized, not the defaults.
+Screenshots show the real application. **English and Russian are supported.** Choose System, Русский or English in Settings. System uses Russian when the primary system language is Russian and English otherwise. The shortcut and login setting pictured above are customized, not the defaults.
 
 ## Install in a minute
 
-1. [Download the latest release](https://github.com/shorins/return-launchpad/releases/latest) and choose **`Return-Launchpad-3.6.5-universal.dmg`** (or the newer version listed there).
+1. [Download the latest release](https://github.com/shorins/return-launchpad/releases/latest) and choose **`Return-Launchpad-3.7.0-universal.dmg`** (or the newer version listed there).
 2. Open the DMG and drag **Return Launchpad** into **Applications**.
 3. Launch it and use **Control + Option + Space** to show or hide it.
 
@@ -57,7 +57,7 @@ Screenshots show the real application. **The current app interface is in Russian
 
 > **First launch:** current downloads are ad-hoc signed and **not notarized by Apple**. macOS may block the first launch. If you trust this download, try opening it, then go to **System Settings → Privacy & Security → Open Anyway**. See [Apple’s instructions](https://support.apple.com/en-us/102445). No need to disable Gatekeeper system-wide.
 
-Each release includes a `.sha256` file. Put it beside the DMG and run `shasum -a 256 -c Return-Launchpad-3.6.5-universal.dmg.sha256` to check the download. Updates are installed manually from Releases; quit the old app before replacing it.
+Each release includes a `.sha256` file. Put it beside the DMG and run `shasum -a 256 -c Return-Launchpad-3.7.0-universal.dmg.sha256` to check the download. Updates are installed manually from Releases; quit the old app before replacing it.
 
 ## The essentials
 
@@ -78,9 +78,9 @@ For apps in `~/Applications` or another custom directory, choose **Settings → 
 
 ## Small app. Open source.
 
-The launcher keeps icons cached so the next page is ready. It stays available in the menu bar when hidden. In one short local audit with 206 apps, its background physical footprint was **33–44 MB**, with **0% CPU at idle samples**. These are measurements from one machine, not a universal guarantee; [the audit includes the method and limitations](docs/memory-audit.ru.md).
+The launcher keeps icons cached so the next page is ready. It stays available in the background when hidden, without adding an icon to your menu bar. Bring it back with your shortcut or from the Dock.
 
-Want to build it, polish an animation, or help with localization? Start with the [development guide](docs/DEVELOPMENT.md) and [contributing guide](CONTRIBUTING.md).
+Want to polish an animation, improve accessibility or report a bug? Contributions and ideas are welcome.
 
 [![Build](https://github.com/shorins/return-launchpad/actions/workflows/macos.yml/badge.svg)](https://github.com/shorins/return-launchpad/actions/workflows/macos.yml)
 

@@ -64,7 +64,7 @@ final class AppManager: ObservableObject {
             layout = try persistence.load(legacyDefaults: legacy)
         } catch {
             storageWritable = false
-            errorMessage = "Раскладка не загружена: \(error.localizedDescription) Новые изменения пока не сохраняются."
+            errorMessage = L10n.format("Could not load the layout: %@ New changes will not be saved.", error.localizedDescription)
         }
         if testing {
             apps = Self.demoApps
@@ -95,9 +95,9 @@ final class AppManager: ObservableObject {
     func chooseApplicationsDirectory() {
         guard !testing else { return }
         let panel = NSOpenPanel()
-        panel.title = "Папка с приложениями"
-        panel.message = "Разрешите чтение вашей папки Applications или выберите другую папку с приложениями."
-        panel.prompt = "Добавить папку"
+        panel.title = L10n.text("Application folder")
+        panel.message = L10n.text("Allow access to your Applications folder or choose another folder containing apps.")
+        panel.prompt = L10n.text("Add folder")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.directoryURL = AppScanner.userApplicationsDirectory
@@ -106,7 +106,7 @@ final class AppManager: ObservableObject {
             do {
                 try self.applicationDirectories?.add(url)
                 self.rescanApps()
-            } catch { self.errorMessage = "Не удалось добавить папку: \(error.localizedDescription)" }
+            } catch { self.errorMessage = L10n.format("Could not add the folder: %@", error.localizedDescription) }
         }
     }
     func rescanApps() {
@@ -157,7 +157,7 @@ final class AppManager: ObservableObject {
     }
 
     func app(_ id: String) -> AppInfo? { appByID[id] }
-    func title(_ id: String) -> String { displayedLayout.folder(id)?.name ?? appByID[id]?.name ?? "Недоступно" }
+    func title(_ id: String) -> String { displayedLayout.folder(id)?.name ?? appByID[id]?.name ?? L10n.text("Unavailable") }
     func parentFolderName(_ id: String) -> String? { layout.folders.first { $0.appIDs.contains(id) }?.name }
     func configureGrid(columns: Int, capacity: Int) {
         columnCount = max(1, columns)
@@ -190,10 +190,10 @@ final class AppManager: ObservableObject {
         guard drag == nil else { return }
         if layout.folder(id) != nil { folderID = id; return }
         guard let app = appByID[id] else { return }
-        if testing { errorMessage = "Тестовый запуск: \(app.name)"; return }
+        if testing { errorMessage = L10n.format("Test launch: %@", app.name); return }
         NSWorkspace.shared.openApplication(at: app.url, configuration: .init()) { [weak self] _, error in
             Task { @MainActor in
-                if let error { self?.errorMessage = "Не удалось открыть приложение: \(error.localizedDescription)" }
+                if let error { self?.errorMessage = L10n.format("Could not open the app: %@", error.localizedDescription) }
                 else { self?.onDismiss?() }
             }
         }
@@ -281,7 +281,7 @@ final class AppManager: ObservableObject {
     private func save() {
         guard storageWritable else { return }
         persistence.save(layout) { [weak self] message in
-            if let message { Task { @MainActor in self?.errorMessage = "Не удалось сохранить раскладку: \(message)" } }
+            if let message { Task { @MainActor in self?.errorMessage = L10n.format("Could not save the layout: %@", message) } }
         }
     }
     func flush() { persistence.flush() }
