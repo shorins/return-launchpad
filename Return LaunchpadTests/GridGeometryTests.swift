@@ -33,7 +33,7 @@ final class GridGeometryTests: XCTestCase {
         model.flush()
     }
 
-    func testSearchUsesFadeAndResetsCachedPointerHighlight() throws {
+    func testSearchRespectsMotionAndResetsCachedPointerHighlight() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = AppManager(directory: directory, legacyDefaults: [], testing: true)
@@ -51,10 +51,21 @@ final class GridGeometryTests: XCTestCase {
         second.onPointerEnter?()
         XCTAssertFalse(first.hovered)
         XCTAssertTrue(second.hovered)
+        let page = try XCTUnwrap(first.superview)
+        // Offscreen AppKit views need an explicit layer on some macOS runners.
+        // Freeze its clock so a short animation cannot expire during assertions.
+        page.layer = CALayer()
+        page.layer?.speed = 0
         model.searchText = "Calculator"
         grid.refresh()
         XCTAssertFalse(tiles.contains { $0.hovered })
-        let page = try XCTUnwrap(grid.subviews.first { $0.layer?.animation(forKey: "searchFade") != nil })
+        if preferences.reduceMotion {
+            XCTAssertNil(page.layer?.animation(forKey: "searchFade"))
+        } else {
+            let fade = try XCTUnwrap(page.layer?.animation(forKey: "searchFade") as? CABasicAnimation)
+            XCTAssertEqual(fade.keyPath, "opacity")
+            XCTAssertEqual(fade.duration, 0.16, accuracy: 0.001)
+        }
         XCTAssertNil(page.layer?.animation(forKey: "pageSlide"))
         let results = page.subviews.compactMap { $0 as? LauncherTile }
         XCTAssertEqual(results.count, 4)
